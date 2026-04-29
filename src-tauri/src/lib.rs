@@ -273,9 +273,15 @@ mod tests {
         let nested_path = workspace_path.join("nested");
         fs::create_dir_all(&nested_path).unwrap();
         let a = workspace_path.join("a.md");
-        let b = nested_path.join("b.md");
+        let b = nested_path.join("b.markdown");
+        let c = nested_path.join("c.mdown");
+        let d = nested_path.join("d.MKD");
+        let ignored = nested_path.join("notes.txt");
         fs::write(&a, "# A").unwrap();
         fs::write(&b, "# B").unwrap();
+        fs::write(&c, "# C").unwrap();
+        fs::write(&d, "# D").unwrap();
+        fs::write(&ignored, "ignore me").unwrap();
 
         let mut backend = DesktopBackend::new(None);
         backend.open_workspace(&workspace_path).unwrap();
@@ -285,7 +291,9 @@ mod tests {
             snapshot.workspace_documents,
             vec![
                 a.to_string_lossy().into_owned(),
-                b.to_string_lossy().into_owned()
+                b.to_string_lossy().into_owned(),
+                c.to_string_lossy().into_owned(),
+                d.to_string_lossy().into_owned()
             ]
         );
     }

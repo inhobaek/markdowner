@@ -170,5 +170,10 @@ fn collect_markdown_files(root: &Path, documents: &mut Vec<PathBuf>) -> Result<(
 fn is_markdown_file(path: &Path) -> bool {
     path.extension()
         .and_then(OsStr::to_str)
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "md" | "markdown" | "mdown" | "mkd"
+            )
+        })
 }
