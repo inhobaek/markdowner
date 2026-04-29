@@ -99,6 +99,17 @@
     "notes": "Inline formatting should stay stable across a multiline paragraph block."
   },
   {
+    "id": "MD-FIX-INL-006",
+    "category": "inline-formatting",
+    "source": "inline/underscore-emphasis-normalized.md",
+    "expected": "inline/underscore-emphasis-normalized.expected.md",
+    "policy": "canonical-equivalent",
+    "features": ["bold", "italic", "link", "underscore-delimiters", "normalization"],
+    "unsupported_behavior": "none",
+    "release_gate": ["v1.0"],
+    "notes": "Parse/serialize normalization should canonicalize underscore emphasis delimiters without changing document semantics."
+  },
+  {
     "id": "MD-FIX-LST-001",
     "category": "lists-and-checklists",
     "source": "lists/bullets-and-checklists.md",

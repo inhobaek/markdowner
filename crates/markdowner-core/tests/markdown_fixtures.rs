@@ -4,7 +4,8 @@ use std::{
 };
 
 use markdowner_core::{
-    EditorMode, EditorRuntime, ThemeKind, ThemeSelection, WysiwygBlockPresentation,
+    EditorMode, EditorRuntime, ThemeKind, ThemeSelection, WysiwygBlockPresentation, parse_markdown,
+    serialize_markdown,
 };
 use serde::Deserialize;
 use tempfile::tempdir;
@@ -24,6 +25,8 @@ struct FixtureSpec {
 enum FixturePolicy {
     #[serde(rename = "byte-for-byte")]
     ByteForByte,
+    #[serde(rename = "canonical-equivalent")]
+    CanonicalEquivalent,
     #[serde(rename = "raw-preserved")]
     RawPreserved,
 }
@@ -163,6 +166,7 @@ fn run_fixture(fixture: &FixtureSpec) {
                 fixture.id
             );
         }
+        FixturePolicy::CanonicalEquivalent => {}
         FixturePolicy::RawPreserved => {
             assert!(
                 view.iter().any(|block| matches!(
@@ -175,12 +179,38 @@ fn run_fixture(fixture: &FixtureSpec) {
         }
     }
 
-    let persisted = save_without_edits(&fixture.id, &source);
-    assert_eq!(
-        persisted, expected,
-        "fixture {} was not preserved by open/save without edits",
-        fixture.id
-    );
+    match fixture.policy {
+        FixturePolicy::ByteForByte | FixturePolicy::RawPreserved => {
+            let persisted = save_without_edits(&fixture.id, &source);
+            assert_eq!(
+                persisted, expected,
+                "fixture {} was not preserved by open/save without edits",
+                fixture.id
+            );
+        }
+        FixturePolicy::CanonicalEquivalent => {
+            let normalized = serialize_markdown(&parse_markdown(&source));
+            let expected_normalized = normalize_canonical_expected(&expected);
+            assert_eq!(
+                normalized, expected_normalized,
+                "fixture {} did not normalize to its expected canonical markdown output",
+                fixture.id
+            );
+            assert_eq!(
+                parse_markdown(&source),
+                parse_markdown(&expected),
+                "fixture {} source and expected markdown should remain semantically equivalent",
+                fixture.id
+            );
+
+            let persisted = save_without_edits(&fixture.id, &source);
+            assert_eq!(
+                persisted, source,
+                "fixture {} unexpectedly rewrote untouched source during a no-op save",
+                fixture.id
+            );
+        }
+    }
 
     if let Some(session) = fixture.session.as_ref() {
         verify_session_expectations(&fixture.id, &source, session);
@@ -203,6 +233,13 @@ fn read_fixture_file(relative_path: &str) -> String {
     let path = fixture_root().join(relative_path);
     fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read fixture file {path:?}: {error}"))
+}
+
+fn normalize_canonical_expected(expected: &str) -> String {
+    expected
+        .replace("\r\n", "\n")
+        .trim_end_matches('\n')
+        .to_string()
 }
 
 fn fixture_root() -> PathBuf {

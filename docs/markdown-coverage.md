@@ -69,10 +69,14 @@ silently rewrite them.
 
 ## Preservation Policy In The Fixture Harness
 
-The current fixture harness implements two preservation policies:
+The current fixture harness implements three preservation policies:
 
 - `byte-for-byte`: the fixture must stay fully rendered in WYSIWYG mode, and a no-op
   `open -> save` flow must write back the expected bytes exactly
+- `canonical-equivalent`: the fixture may normalize to different markdown delimiters when
+  passed through `parse_markdown` plus `serialize_markdown`, but it must still parse to the
+  same semantic document as the expected fixture while a no-op save keeps the untouched
+  source bytes
 - `raw-preserved`: the fixture must surface at least one raw fallback block in WYSIWYG
   mode, and the same no-op save flow must still preserve the expected bytes exactly
 
@@ -85,7 +89,7 @@ Session fixtures can also assert:
 One subtle but intentional distinction: the no-op save tests exercise
 `EditorRuntime::save_active_document()`, which writes the original source bytes when the
 document is untouched. That is stricter than calling `serialize_markdown(parse_markdown(source))`
-directly, which can normalize details such as a trailing final newline.
+directly, which can normalize details such as emphasis delimiters or a trailing final newline.
 
 ## Current v0.2 Fixture Catalog
 
@@ -106,11 +110,14 @@ The unsupported category currently documents the product's honest limits: these 
 not yet first-class editable syntax, but they are covered by source-preservation tests so a
 no-op open/save flow does not damage them.
 
+The broader catalog also now includes an early v1.0 `canonical-equivalent` seed fixture for
+underscore-delimited inline emphasis, which proves the harness can validate parser/serializer
+normalization behavior separately from the stricter no-op save contract.
+
 ## Known Gaps
 
 - Ordered lists, horizontal rules, and strikethrough are still preservation-only behavior,
   not native structured syntax
-- The harness does not yet implement the PRD's future `canonical-equivalent` or
-  `known-lossy` policies
+- The harness does not yet implement the PRD's future `known-lossy` policy
 - The catalog does not yet cover front matter, nested lists, inline HTML, escaped-pipe
   tables, or larger mode-switching scenarios planned for the v1.0 fixture expansion
