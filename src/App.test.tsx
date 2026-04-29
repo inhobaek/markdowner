@@ -368,4 +368,87 @@ describe('App recent documents', () => {
       );
     });
   });
+
+  it('saves the active document with the keyboard shortcut', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+      }),
+    );
+    saveActiveDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByText('meeting-notes.md');
+
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+
+    await waitFor(() => {
+      expect(saveActiveDocumentMock).toHaveBeenCalled();
+    });
+  });
+
+  it('opens a workspace with the keyboard shortcut', async () => {
+    openDialogMock.mockResolvedValue('/tmp/project');
+    openWorkspaceMock.mockResolvedValue(
+      baseSnapshot({
+        rootDir: '/tmp/project',
+        workspaceDocuments: ['/tmp/project/README.md'],
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'O', metaKey: true, shiftKey: true });
+
+    await waitFor(() => {
+      expect(openDialogMock).toHaveBeenCalledWith({
+        multiple: false,
+        directory: true,
+      });
+      expect(openWorkspaceMock).toHaveBeenCalledWith('/tmp/project');
+    });
+  });
+
+  it('switches modes with the keyboard shortcuts', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+      }),
+    );
+    setModeMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'Source',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByText('meeting-notes.md');
+
+    fireEvent.keyDown(window, { key: '2', metaKey: true });
+
+    await waitFor(() => {
+      expect(setModeMock).toHaveBeenCalledWith('Source');
+    });
+  });
 });

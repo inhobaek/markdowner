@@ -53,6 +53,22 @@ const EMPTY_SNAPSHOT: AppSnapshot = {
 const MARKDOWN_FILE_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 const WINDOW_TITLE = 'Markdowner';
 
+function usesCommandModifier(event: KeyboardEvent) {
+  return event.metaKey || event.ctrlKey;
+}
+
+function matchesShortcut(
+  event: KeyboardEvent,
+  key: string,
+  options: { shift?: boolean } = {},
+) {
+  if (event.defaultPrevented || event.altKey || !usesCommandModifier(event)) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === key && event.shiftKey === (options.shift ?? false);
+}
+
 function normalizeDisplayPath(path: string) {
   return path.replace(/\\/g, '/');
 }
@@ -367,6 +383,67 @@ export default function App() {
       applySnapshot(next);
     });
   };
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      if (busy) {
+        return;
+      }
+
+      if (matchesShortcut(event, 'n')) {
+        event.preventDefault();
+        void handleNewDocument();
+        return;
+      }
+
+      if (matchesShortcut(event, 'o', { shift: true })) {
+        event.preventDefault();
+        void handleOpenWorkspace();
+        return;
+      }
+
+      if (matchesShortcut(event, 'o')) {
+        event.preventDefault();
+        void handleOpenDocument();
+        return;
+      }
+
+      if (matchesShortcut(event, 's', { shift: true })) {
+        event.preventDefault();
+        void handleSaveAs();
+        return;
+      }
+
+      if (matchesShortcut(event, 's')) {
+        event.preventDefault();
+        void handleSave();
+        return;
+      }
+
+      if (matchesShortcut(event, '1')) {
+        event.preventDefault();
+        void handleSetMode('Wysiwyg');
+        return;
+      }
+
+      if (matchesShortcut(event, '2')) {
+        event.preventDefault();
+        void handleSetMode('Source');
+        return;
+      }
+
+      if (matchesShortcut(event, '3')) {
+        event.preventDefault();
+        void handleSetMode('Preview');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboardShortcut);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyboardShortcut);
+    };
+  }, [busy, localDraft, snapshot]);
 
   return (
     <div className="desktop-shell">
