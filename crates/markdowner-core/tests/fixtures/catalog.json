@@ -55,6 +55,39 @@
     "notes": "Language-tagged and plain fences should round-trip."
   },
   {
+    "id": "MD-FIX-CODE-002",
+    "category": "code-fences",
+    "source": "code-fences/json-object.md",
+    "expected": "code-fences/json-object.expected.md",
+    "policy": "byte-for-byte",
+    "features": ["code-fence", "json", "language-tag"],
+    "unsupported_behavior": "none",
+    "release_gate": ["v0.2"],
+    "notes": "JSON code fences should round-trip without losing indentation."
+  },
+  {
+    "id": "MD-FIX-CODE-003",
+    "category": "code-fences",
+    "source": "code-fences/unknown-language.md",
+    "expected": "code-fences/unknown-language.expected.md",
+    "policy": "byte-for-byte",
+    "features": ["code-fence", "unknown-language-tag"],
+    "unsupported_behavior": "none",
+    "release_gate": ["v0.2"],
+    "notes": "Unknown language tags remain source-preserved on no-op saves."
+  },
+  {
+    "id": "MD-FIX-CODE-004",
+    "category": "code-fences",
+    "source": "code-fences/plain-with-blank-lines.md",
+    "expected": "code-fences/plain-with-blank-lines.expected.md",
+    "policy": "byte-for-byte",
+    "features": ["code-fence", "plain", "blank-lines"],
+    "unsupported_behavior": "none",
+    "release_gate": ["v0.2"],
+    "notes": "Plain code fences preserve blank interior lines exactly."
+  },
+  {
     "id": "MD-FIX-IMG-001",
     "category": "images",
     "source": "images/relative-path.md",

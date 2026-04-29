@@ -39,8 +39,12 @@ fn markdown_fixtures_cover_seed_v0_policies() {
 }
 
 #[test]
-fn markdown_fixtures_include_v0_image_and_unsupported_seed_coverage() {
+fn markdown_fixtures_include_v0_code_fence_image_and_unsupported_seed_coverage() {
     let fixtures = load_fixture_catalog();
+    let code_fence_fixtures = fixtures
+        .iter()
+        .filter(|fixture| fixture.category == "code-fences")
+        .count();
     let image_fixtures = fixtures
         .iter()
         .filter(|fixture| fixture.category == "images")
@@ -50,6 +54,11 @@ fn markdown_fixtures_include_v0_image_and_unsupported_seed_coverage() {
         .filter(|fixture| fixture.category == "unsupported")
         .count();
 
+    assert!(
+        code_fence_fixtures >= 4,
+        "expected at least four v0.2 code-fence fixtures, found {}",
+        code_fence_fixtures
+    );
     assert!(
         image_fixtures >= 3,
         "expected at least three v0.2 image fixtures, found {}",
