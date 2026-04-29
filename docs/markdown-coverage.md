@@ -112,7 +112,9 @@ no-op open/save flow does not damage them.
 
 The broader catalog also now includes an early v1.0 `canonical-equivalent` seed fixture for
 underscore-delimited inline emphasis, which proves the harness can validate parser/serializer
-normalization behavior separately from the stricter no-op save contract.
+normalization behavior separately from the stricter no-op save contract. The v0.2 category
+minimums are now counted only from fixtures tagged for the `v0.2` release gate, so newer
+v1.0 seed fixtures cannot accidentally satisfy the earlier alpha coverage bars.
 
 ## Known Gaps
 

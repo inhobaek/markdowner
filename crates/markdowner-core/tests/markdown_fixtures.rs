@@ -18,6 +18,8 @@ struct FixtureSpec {
     expected: String,
     policy: FixturePolicy,
     #[serde(default)]
+    release_gate: Vec<ReleaseGate>,
+    #[serde(default)]
     session: Option<SessionExpectations>,
 }
 
@@ -29,6 +31,14 @@ enum FixturePolicy {
     CanonicalEquivalent,
     #[serde(rename = "raw-preserved")]
     RawPreserved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum ReleaseGate {
+    #[serde(rename = "v0.2")]
+    V0_2,
+    #[serde(rename = "v1.0")]
+    V1_0,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,38 +76,25 @@ fn markdown_fixtures_cover_seed_v0_policies() {
 #[test]
 fn markdown_fixtures_include_v0_code_fence_image_and_unsupported_seed_coverage() {
     let fixtures = load_fixture_catalog();
-    let heading_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "headings-and-paragraphs")
-        .count();
-    let inline_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "inline-formatting")
-        .count();
-    let code_fence_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "code-fences")
-        .count();
-    let image_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "images")
-        .count();
-    let list_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "lists-and-checklists")
-        .count();
-    let table_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "tables")
-        .count();
-    let unsupported_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "unsupported")
-        .count();
-    let workspace_session_fixtures = fixtures
-        .iter()
-        .filter(|fixture| fixture.category == "workspace-and-session")
-        .count();
+    let heading_fixtures = count_category_fixtures_for_release(
+        &fixtures,
+        "headings-and-paragraphs",
+        ReleaseGate::V0_2,
+    );
+    let inline_fixtures =
+        count_category_fixtures_for_release(&fixtures, "inline-formatting", ReleaseGate::V0_2);
+    let code_fence_fixtures =
+        count_category_fixtures_for_release(&fixtures, "code-fences", ReleaseGate::V0_2);
+    let image_fixtures =
+        count_category_fixtures_for_release(&fixtures, "images", ReleaseGate::V0_2);
+    let list_fixtures =
+        count_category_fixtures_for_release(&fixtures, "lists-and-checklists", ReleaseGate::V0_2);
+    let table_fixtures =
+        count_category_fixtures_for_release(&fixtures, "tables", ReleaseGate::V0_2);
+    let unsupported_fixtures =
+        count_category_fixtures_for_release(&fixtures, "unsupported", ReleaseGate::V0_2);
+    let workspace_session_fixtures =
+        count_category_fixtures_for_release(&fixtures, "workspace-and-session", ReleaseGate::V0_2);
 
     assert!(
         heading_fixtures >= 4,
@@ -141,6 +138,39 @@ fn markdown_fixtures_include_v0_code_fence_image_and_unsupported_seed_coverage()
     );
 }
 
+#[test]
+fn fixture_category_counts_ignore_other_release_gates() {
+    let fixtures = vec![
+        fixture_spec(
+            "MD-FIX-INL-V02-001",
+            "inline-formatting",
+            FixturePolicy::ByteForByte,
+            vec![ReleaseGate::V0_2],
+        ),
+        fixture_spec(
+            "MD-FIX-INL-V02-002",
+            "inline-formatting",
+            FixturePolicy::ByteForByte,
+            vec![ReleaseGate::V0_2],
+        ),
+        fixture_spec(
+            "MD-FIX-INL-V10-001",
+            "inline-formatting",
+            FixturePolicy::CanonicalEquivalent,
+            vec![ReleaseGate::V1_0],
+        ),
+    ];
+
+    assert_eq!(
+        count_category_fixtures_for_release(&fixtures, "inline-formatting", ReleaseGate::V0_2),
+        2
+    );
+    assert_eq!(
+        count_category_fixtures_for_release(&fixtures, "inline-formatting", ReleaseGate::V1_0),
+        1
+    );
+}
+
 fn load_fixture_catalog() -> Vec<FixtureSpec> {
     let catalog_path = fixture_root().join("catalog.json");
     let catalog = fs::read_to_string(&catalog_path)
@@ -148,6 +178,20 @@ fn load_fixture_catalog() -> Vec<FixtureSpec> {
 
     serde_json::from_str::<Vec<FixtureSpec>>(&catalog)
         .unwrap_or_else(|error| panic!("failed to parse fixture catalog {catalog_path:?}: {error}"))
+}
+
+fn count_category_fixtures_for_release(
+    fixtures: &[FixtureSpec],
+    category: &str,
+    release_gate: ReleaseGate,
+) -> usize {
+    fixtures
+        .iter()
+        .filter(|fixture| {
+            fixture.category == category
+                && (fixture.release_gate.is_empty() || fixture.release_gate.contains(&release_gate))
+        })
+        .count()
 }
 
 fn run_fixture(fixture: &FixtureSpec) {
@@ -300,5 +344,22 @@ fn verify_session_expectations(fixture_id: &str, source: &str, session: &Session
             &ThemeSelection::new(theme_kind, None),
             "fixture {fixture_id} did not restore its theme selection"
         );
+    }
+}
+
+fn fixture_spec(
+    id: &str,
+    category: &str,
+    policy: FixturePolicy,
+    release_gate: Vec<ReleaseGate>,
+) -> FixtureSpec {
+    FixtureSpec {
+        id: id.to_string(),
+        category: category.to_string(),
+        source: format!("{id}.md"),
+        expected: format!("{id}.expected.md"),
+        policy,
+        release_gate,
+        session: None,
     }
 }
