@@ -390,5 +390,16 @@
     "unsupported_behavior": "raw-fallback",
     "release_gate": ["v1.0"],
     "notes": "Horizontal rules should remain source-preserved until native support lands."
+  },
+  {
+    "id": "MD-FIX-RAW-007",
+    "category": "unsupported",
+    "source": "unsupported/auto-link.md",
+    "expected": "unsupported/auto-link.expected.md",
+    "policy": "raw-preserved",
+    "features": ["auto-link"],
+    "unsupported_behavior": "raw-fallback",
+    "release_gate": ["v1.0"],
+    "notes": "Auto-link syntax should remain source-preserved until native support lands."
   }
 ]
