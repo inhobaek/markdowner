@@ -379,5 +379,16 @@
     "unsupported_behavior": "raw-fallback",
     "release_gate": ["v1.0"],
     "notes": "Front matter blocks should remain source-preserved until native support lands."
+  },
+  {
+    "id": "MD-FIX-RAW-006",
+    "category": "unsupported",
+    "source": "unsupported/horizontal-rule.md",
+    "expected": "unsupported/horizontal-rule.expected.md",
+    "policy": "raw-preserved",
+    "features": ["horizontal-rule"],
+    "unsupported_behavior": "raw-fallback",
+    "release_gate": ["v1.0"],
+    "notes": "Horizontal rules should remain source-preserved until native support lands."
   }
 ]
