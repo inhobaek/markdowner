@@ -886,13 +886,13 @@ export default function App() {
 
       if (matchesShortcut(event, '1')) {
         event.preventDefault();
-        void handleSetMode('Wysiwyg');
+        void handleSetMode('Editor');
         return;
       }
 
       if (matchesShortcut(event, '2')) {
         event.preventDefault();
-        void handleSetMode('Editor');
+        void handleSetMode('Wysiwyg');
         return;
       }
 

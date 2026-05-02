@@ -747,7 +747,7 @@ describe('App recent documents', () => {
     });
   });
 
-  it('switches modes with the keyboard shortcuts', async () => {
+  it('switches modes with the keyboard shortcuts (Cmd+1/2/3)', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({
         activeDocumentName: 'meeting-notes.md',
@@ -755,12 +755,12 @@ describe('App recent documents', () => {
         activeDocumentSource: '# Meeting notes',
       }),
     );
-    setModeMock.mockResolvedValue(
+    setModeMock.mockImplementation(async (mode) =>
       baseSnapshot({
         activeDocumentName: 'meeting-notes.md',
         activeDocumentPath: '/tmp/project/meeting-notes.md',
         activeDocumentSource: '# Meeting notes',
-        mode: 'Editor',
+        mode,
       }),
     );
 
@@ -770,10 +770,19 @@ describe('App recent documents', () => {
 
     await screen.findByText(/^meeting-notes\.md/);
 
-    fireEvent.keyDown(window, { key: '2', metaKey: true });
-
+    fireEvent.keyDown(window, { key: '1', metaKey: true });
     await waitFor(() => {
       expect(setModeMock).toHaveBeenCalledWith('Editor');
+    });
+
+    fireEvent.keyDown(window, { key: '2', metaKey: true });
+    await waitFor(() => {
+      expect(setModeMock).toHaveBeenCalledWith('Wysiwyg');
+    });
+
+    fireEvent.keyDown(window, { key: '3', metaKey: true });
+    await waitFor(() => {
+      expect(setModeMock).toHaveBeenCalledWith('SplitView');
     });
   });
 

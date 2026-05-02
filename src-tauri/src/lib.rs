@@ -69,18 +69,18 @@ const FILE_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
 
 const VIEW_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
     MenuCommandDescriptor {
-        id: MENU_COMMAND_SET_MODE_WYSIWYG,
-        label: "WYSIWYG",
+        id: MENU_COMMAND_SET_MODE_SOURCE,
+        label: "Editor",
         accelerator: "CmdOrCtrl+1",
     },
     MenuCommandDescriptor {
-        id: MENU_COMMAND_SET_MODE_SOURCE,
-        label: "Source",
+        id: MENU_COMMAND_SET_MODE_WYSIWYG,
+        label: "WYSIWYG",
         accelerator: "CmdOrCtrl+2",
     },
     MenuCommandDescriptor {
         id: MENU_COMMAND_SET_MODE_PREVIEW,
-        label: "Preview",
+        label: "Split-view",
         accelerator: "CmdOrCtrl+3",
     },
 ];
@@ -660,10 +660,24 @@ mod tests {
                 .map(|descriptor| descriptor.id)
                 .collect::<Vec<_>>(),
             vec![
-                super::MENU_COMMAND_SET_MODE_WYSIWYG,
                 super::MENU_COMMAND_SET_MODE_SOURCE,
+                super::MENU_COMMAND_SET_MODE_WYSIWYG,
                 MENU_COMMAND_SET_MODE_PREVIEW,
             ]
+        );
+        assert_eq!(
+            VIEW_MENU_COMMANDS
+                .iter()
+                .map(|descriptor| descriptor.accelerator)
+                .collect::<Vec<_>>(),
+            vec!["CmdOrCtrl+1", "CmdOrCtrl+2", "CmdOrCtrl+3"]
+        );
+        assert_eq!(
+            VIEW_MENU_COMMANDS
+                .iter()
+                .map(|descriptor| descriptor.label)
+                .collect::<Vec<_>>(),
+            vec!["Editor", "WYSIWYG", "Split-view"]
         );
     }
 
