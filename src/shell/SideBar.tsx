@@ -67,13 +67,23 @@ export function SideBar({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Workspace
         </div>
-        <Button onClick={onNewDocument} disabled={busy}>
+        <Button onClick={onNewDocument} disabled={busy} title="New Document (Cmd+N)">
           New Document
         </Button>
-        <Button variant="outline" onClick={onOpenWorkspace} disabled={busy}>
+        <Button
+          variant="outline"
+          onClick={onOpenWorkspace}
+          disabled={busy}
+          title="Open Folder (Cmd+Shift+O)"
+        >
           Open Folder…
         </Button>
-        <Button variant="outline" onClick={onOpenDocument} disabled={busy}>
+        <Button
+          variant="outline"
+          onClick={onOpenDocument}
+          disabled={busy}
+          title="Open Markdown (Cmd+O)"
+        >
           Open Markdown…
         </Button>
       </section>

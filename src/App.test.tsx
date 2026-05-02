@@ -597,6 +597,28 @@ describe('App recent documents', () => {
     expect(importCssButton).toHaveAttribute('title', 'Import a custom CSS theme');
   });
 
+  it('exposes keyboard-shortcut tooltips on the SideBar workspace action buttons', async () => {
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const newDocumentButton = await screen.findByRole('button', {
+      name: /^new document$/i,
+    });
+    const openFolderButton = screen.getByRole('button', {
+      name: /^open folder…$/i,
+    });
+    const openMarkdownButton = screen.getByRole('button', {
+      name: /^open markdown…$/i,
+    });
+
+    expect(newDocumentButton).toHaveAttribute('title', 'New Document (Cmd+N)');
+    expect(openFolderButton).toHaveAttribute('title', 'Open Folder (Cmd+Shift+O)');
+    expect(openMarkdownButton).toHaveAttribute('title', 'Open Markdown (Cmd+O)');
+  });
+
   it('creates an untitled document and saves it through Save As', async () => {
     newDocumentMock.mockResolvedValue(
       baseSnapshot({
