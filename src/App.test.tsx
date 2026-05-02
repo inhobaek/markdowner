@@ -922,6 +922,47 @@ describe('App recent documents', () => {
     });
   });
 
+  it('opens the Command Palette with Cmd+Shift+P and runs a selected command', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'Editor',
+      }),
+    );
+    setModeMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'SplitView',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'P', metaKey: true, shiftKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /command palette/i });
+    const input = within(dialog).getByRole('textbox', { name: /command palette search/i });
+
+    fireEvent.change(input, { target: { value: 'split' } });
+
+    const splitOption = await within(dialog).findByRole('option', {
+      name: /mode: split view/i,
+    });
+    fireEvent.click(splitOption);
+
+    await waitFor(() => {
+      expect(setModeMock).toHaveBeenCalledWith('SplitView');
+    });
+
+    expect(screen.queryByRole('dialog', { name: /command palette/i })).toBeNull();
+  });
+
   it('opens the Settings dialog with the Cmd+, keyboard shortcut', async () => {
     invokeMock.mockResolvedValue({
       autoSave: false,

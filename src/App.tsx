@@ -33,6 +33,7 @@ import { Separator } from '@/components/ui/separator';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { ActivityBar } from '@/shell/ActivityBar';
+import { CommandPalette, type CommandPaletteCommand } from '@/shell/CommandPalette';
 import { EditorArea } from '@/shell/EditorArea';
 import { Header } from '@/shell/Header';
 import { QuickOpen, type QuickOpenItem } from '@/shell/QuickOpen';
@@ -373,6 +374,7 @@ export default function App() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [debouncedLocalDraft, setDebouncedLocalDraft] = useState(localDraft);
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({
     line: 1,
@@ -969,6 +971,12 @@ export default function App() {
         return;
       }
 
+      if (matchesShortcut(event, 'p', { shift: true })) {
+        event.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
       if (matchesShortcut(event, 'p')) {
         event.preventDefault();
         setIsQuickOpenOpen((prev) => !prev);
@@ -1163,6 +1171,92 @@ export default function App() {
     }
   };
 
+  const paletteCommands: CommandPaletteCommand[] = [
+    {
+      id: 'file.new',
+      category: 'File',
+      label: 'New Document',
+      shortcut: '⌘N',
+      run: () => void handleNewDocument(),
+    },
+    {
+      id: 'file.open',
+      category: 'File',
+      label: 'Open File…',
+      shortcut: '⌘O',
+      run: () => void handleOpenDocument(),
+    },
+    {
+      id: 'file.openWorkspace',
+      category: 'File',
+      label: 'Open Workspace…',
+      shortcut: '⌘⇧O',
+      run: () => void handleOpenWorkspace(),
+    },
+    {
+      id: 'file.save',
+      category: 'File',
+      label: 'Save',
+      shortcut: '⌘S',
+      disabled: !activeDocumentOpen,
+      run: () => void handleSave(),
+    },
+    {
+      id: 'file.saveAs',
+      category: 'File',
+      label: 'Save As…',
+      shortcut: '⌘⇧S',
+      disabled: !activeDocumentOpen,
+      run: () => void handleSaveAs(),
+    },
+    {
+      id: 'view.toggleSidebar',
+      category: 'View',
+      label: isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar',
+      shortcut: '⌘B',
+      run: () => handleToggleSidebar(),
+    },
+    {
+      id: 'view.quickOpen',
+      category: 'View',
+      label: 'Quick Open File…',
+      shortcut: '⌘P',
+      run: () => setIsQuickOpenOpen(true),
+    },
+    ...EDITOR_MODE_OPTIONS.map((option) => ({
+      id: `view.mode.${option.mode}`,
+      category: 'View',
+      label: `Mode: ${option.label}`,
+      shortcut: option.shortcutSymbol,
+      run: () => void handleSetMode(option.mode),
+    })),
+    {
+      id: 'theme.light',
+      category: 'Theme',
+      label: 'Theme: Light',
+      run: () => void handleSetTheme('BuiltInLight'),
+    },
+    {
+      id: 'theme.dark',
+      category: 'Theme',
+      label: 'Theme: Dark',
+      run: () => void handleSetTheme('BuiltInDark'),
+    },
+    {
+      id: 'theme.import',
+      category: 'Theme',
+      label: 'Import CSS Theme…',
+      run: () => void handleImportTheme(),
+    },
+    {
+      id: 'app.settings',
+      category: 'Preferences',
+      label: 'Open Settings',
+      shortcut: '⌘,',
+      run: () => setIsSettingsOpen(true),
+    },
+  ];
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
       <Header
@@ -1343,6 +1437,11 @@ export default function App() {
         onOpenChange={setIsQuickOpenOpen}
         items={quickOpenItems}
         onSelect={handleQuickOpenSelect}
+      />
+      <CommandPalette
+        open={isCommandPaletteOpen}
+        onOpenChange={setIsCommandPaletteOpen}
+        commands={paletteCommands}
       />
 
       <StatusBar
