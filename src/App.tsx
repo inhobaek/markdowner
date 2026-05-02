@@ -24,15 +24,6 @@ import remarkGfm from 'remark-gfm';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1015,18 +1006,86 @@ export default function App() {
       : 'Open a workspace or a Markdown file to begin.';
 
   return (
-    <div
-      className={cn(
-        'grid min-h-screen bg-background text-foreground transition-[grid-template-columns] duration-300 ease-in-out',
-        isSidebarOpen ? 'grid-cols-[280px_minmax(0,1fr)]' : 'grid-cols-[0px_minmax(0,1fr)]',
-      )}
-    >
-      <aside
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
+      <Header
+        title={activeDocumentName ? `${activeDocumentName}${snapshot.activeDocumentDirty ? ' •' : ''}` : 'Markdowner'}
+        leftContent={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleToggleSidebar}
+              title="Toggle Sidebar (Cmd+B)"
+              aria-label="Toggle Sidebar"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-left"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8" onClick={handleSave} disabled={!activeDocumentOpen || busy}>
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8" onClick={handleSaveAs} disabled={!activeDocumentOpen || busy}>
+              Save As…
+            </Button>
+          </>
+        }
+        rightContent={
+          <>
+            <Button variant="ghost" size="sm" className="h-8" onClick={handleImportTheme} disabled={busy}>
+              Import CSS…
+            </Button>
+            <ToggleGroup
+              type="single"
+              value={currentMode}
+              onValueChange={(value) => {
+                if (value) {
+                  void handleSetMode(value as EditorMode);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="h-8"
+            >
+              {(['Wysiwyg', 'Editor', 'SplitView'] as EditorMode[]).map((mode) => (
+                <ToggleGroupItem key={mode} value={mode} disabled={busy} aria-label={mode}>
+                  {mode}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <ToggleGroup
+              type="single"
+              value={snapshot.theme.kind === 'CustomCss' ? '' : snapshot.theme.kind}
+              onValueChange={(value) => {
+                if (value) {
+                  void handleSetTheme(value as ThemeKind);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="h-8"
+            >
+              <ToggleGroupItem value="BuiltInLight" disabled={busy} aria-label="Light theme">
+                Light
+              </ToggleGroupItem>
+              <ToggleGroupItem value="BuiltInDark" disabled={busy} aria-label="Dark theme">
+                Dark
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </>
+        }
+      />
+      <div
         className={cn(
-          'flex min-h-0 flex-col gap-5 overflow-y-auto border-r border-border bg-sidebar p-5 text-sidebar-foreground transition-opacity duration-300 ease-in-out',
-          !isSidebarOpen && 'opacity-0 invisible overflow-hidden p-0 border-r-0',
+          'flex-1 grid transition-[grid-template-columns] duration-300 ease-in-out',
+          isSidebarOpen ? 'grid-cols-[280px_minmax(0,1fr)]' : 'grid-cols-[0px_minmax(0,1fr)]',
         )}
       >
+        <aside
+          className={cn(
+            'flex min-h-0 flex-col gap-5 overflow-y-auto border-r border-border bg-sidebar p-5 text-sidebar-foreground transition-opacity duration-300 ease-in-out',
+            !isSidebarOpen && 'opacity-0 invisible overflow-hidden p-0 border-r-0',
+          )}
+        >
         <div className="space-y-2">
           <Badge variant="secondary" className="uppercase tracking-wider">
             Markdowner
@@ -1124,84 +1183,7 @@ export default function App() {
         </section>
       </aside>
 
-      <main className="flex min-w-0 flex-col gap-3 p-5">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2 ring-1 ring-foreground/5">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleToggleSidebar}
-              title="Toggle Sidebar (Cmd+B)"
-              aria-label="Toggle Sidebar"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-left"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
-            </Button>
-            <Button onClick={handleSave} disabled={!activeDocumentOpen || busy}>
-              Save
-            </Button>
-            <Button variant="outline" onClick={handleSaveAs} disabled={!activeDocumentOpen || busy}>
-              Save As…
-            </Button>
-            <Button variant="outline" onClick={handleImportTheme} disabled={busy}>
-              Import CSS Theme…
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <ToggleGroup
-              type="single"
-              value={currentMode}
-              onValueChange={(value) => {
-                if (value) {
-                  void handleSetMode(value as EditorMode);
-                }
-              }}
-              variant="outline"
-              size="sm"
-            >
-              {(['Wysiwyg', 'Editor', 'SplitView'] as EditorMode[]).map((mode) => (
-                <ToggleGroupItem key={mode} value={mode} disabled={busy} aria-label={mode}>
-                  {mode}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-
-            <ToggleGroup
-              type="single"
-              value={snapshot.theme.kind === 'CustomCss' ? '' : snapshot.theme.kind}
-              onValueChange={(value) => {
-                if (value) {
-                  void handleSetTheme(value as ThemeKind);
-                }
-              }}
-              variant="outline"
-              size="sm"
-            >
-              <ToggleGroupItem value="BuiltInLight" disabled={busy} aria-label="Light theme">
-                Light
-              </ToggleGroupItem>
-              <ToggleGroupItem value="BuiltInDark" disabled={busy} aria-label="Dark theme">
-                Dark
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-        </header>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="truncate">{activeDocumentName}</CardTitle>
-            <CardDescription className="truncate">{documentMeta}</CardDescription>
-            <CardAction>
-              <div className="flex items-center gap-2">
-                <Badge variant={snapshot.activeDocumentDirty ? 'destructive' : 'secondary'}>
-                  {snapshot.activeDocumentDirty ? 'Unsaved' : 'Saved'}
-                </Badge>
-                <Badge variant="outline">{snapshot.theme.kind}</Badge>
-              </div>
-            </CardAction>
-          </CardHeader>
-        </Card>
-
+      <main className="flex min-w-0 flex-col relative h-full">
         {errorMessage ? (
           <Alert variant="destructive">
             <AlertTitle>Something went wrong</AlertTitle>
@@ -1278,7 +1260,7 @@ export default function App() {
           </Alert>
         ) : null}
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card ring-1 ring-foreground/5">
+        <section className="flex min-h-0 flex-1 flex-col bg-background">
           {!activeDocumentOpen ? (
             <Empty className="flex-1 border-dashed">
               <EmptyHeader>
@@ -1331,6 +1313,12 @@ export default function App() {
           ) : null}
         </section>
       </main>
+      </div>
+      <StatusBar
+        mode={currentMode}
+        theme={snapshot.theme.kind}
+        isDirty={snapshot.activeDocumentDirty}
+      />
     </div>
   );
 }
