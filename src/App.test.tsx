@@ -413,6 +413,52 @@ describe('App recent documents', () => {
     expect(document.title).toBe('● meeting-notes.md — Markdowner');
   });
 
+  it('exposes a System theme toggle that follows OS preference', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+      }),
+    );
+    setThemeMock.mockImplementation(async (kind: 'BuiltInLight' | 'BuiltInDark' | 'CustomCss') =>
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        theme: { kind, stylesheet: null, stylesheetPath: null },
+      }),
+    );
+
+    window.localStorage.setItem('markdowner.themeMode', 'manual');
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const lightToggle = await screen.findByRole('radio', { name: /light theme/i });
+    const darkToggle = screen.getByRole('radio', { name: /dark theme/i });
+    const systemToggle = screen.getByRole('radio', { name: /follow system theme/i });
+
+    expect(lightToggle).toBeInTheDocument();
+    expect(darkToggle).toBeInTheDocument();
+    expect(systemToggle).toBeInTheDocument();
+
+    fireEvent.click(systemToggle);
+
+    await waitFor(() => {
+      expect(setThemeMock).toHaveBeenCalledWith('BuiltInDark');
+    });
+    expect(window.localStorage.getItem('markdowner.themeMode')).toBe('system');
+
+    fireEvent.click(lightToggle);
+
+    await waitFor(() => {
+      expect(setThemeMock).toHaveBeenCalledWith('BuiltInLight');
+    });
+    expect(window.localStorage.getItem('markdowner.themeMode')).toBe('manual');
+  });
+
   it('scopes imported custom CSS to markdown content surfaces', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({

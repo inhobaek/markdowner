@@ -382,6 +382,7 @@ export default function App() {
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readThemeMode());
   const [debouncedLocalDraft, setDebouncedLocalDraft] = useState(localDraft);
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({
     line: 1,
@@ -887,7 +888,17 @@ export default function App() {
   const handleSetTheme = async (themeKind: ThemeKind) => {
     await withBusy(async () => {
       writeThemeMode('manual');
+      setThemeMode('manual');
       const next = await setTheme(themeKind);
+      applySnapshot(next, true);
+    });
+  };
+
+  const handleFollowSystemTheme = async () => {
+    await withBusy(async () => {
+      writeThemeMode('system');
+      setThemeMode('system');
+      const next = await setTheme(resolveOsTheme());
       applySnapshot(next, true);
     });
   };
@@ -1299,6 +1310,12 @@ export default function App() {
       run: () => void handleSetTheme('BuiltInDark'),
     },
     {
+      id: 'theme.system',
+      category: 'Theme',
+      label: 'Theme: Follow System',
+      run: () => void handleFollowSystemTheme(),
+    },
+    {
       id: 'theme.import',
       category: 'Theme',
       label: 'Import CSS Theme…',
@@ -1368,9 +1385,18 @@ export default function App() {
             </ToggleGroup>
             <ToggleGroup
               type="single"
-              value={snapshot.theme.kind === 'CustomCss' ? '' : snapshot.theme.kind}
+              value={
+                themeMode === 'system'
+                  ? 'system'
+                  : snapshot.theme.kind === 'CustomCss'
+                  ? ''
+                  : snapshot.theme.kind
+              }
               onValueChange={(value) => {
-                if (value) {
+                if (!value) return;
+                if (value === 'system') {
+                  void handleFollowSystemTheme();
+                } else {
                   void handleSetTheme(value as ThemeKind);
                 }
               }}
@@ -1383,6 +1409,14 @@ export default function App() {
               </ToggleGroupItem>
               <ToggleGroupItem value="BuiltInDark" disabled={busy} aria-label="Dark theme">
                 Dark
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="system"
+                disabled={busy}
+                aria-label="Follow system theme"
+                title="Follow system theme"
+              >
+                System
               </ToggleGroupItem>
             </ToggleGroup>
           </>
