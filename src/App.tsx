@@ -1298,8 +1298,8 @@ export default function App() {
       run: () => setIsQuickOpenOpen(true),
     },
     {
-      id: 'view.toggleWordWrap',
-      category: 'View',
+      id: 'preferences.toggleWordWrap',
+      category: 'Preferences',
       label: settings.editorLineWrap ? 'Disable Word Wrap' : 'Enable Word Wrap',
       run: () =>
         handleSettingsChange({ ...settings, editorLineWrap: !settings.editorLineWrap }),
