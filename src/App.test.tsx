@@ -317,7 +317,7 @@ describe('App recent documents', () => {
     render(<App />);
 
     expect(await screen.findAllByText('draft.md')).toHaveLength(3);
-    expect(screen.getAllByText('guides/draft.md')).toHaveLength(2);
+    expect(screen.getAllByText('guides/draft.md')).toHaveLength(3);
   });
 
   it('reflects the active document dirty state in the window title', async () => {

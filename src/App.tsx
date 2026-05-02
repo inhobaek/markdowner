@@ -1167,6 +1167,12 @@ export default function App() {
         mode={currentMode}
         theme={snapshot.theme.kind}
         isDirty={snapshot.activeDocumentDirty}
+        workspaceName={snapshot.rootDir ? displayFileName(snapshot.rootDir) : null}
+        activeDocumentLabel={
+          snapshot.activeDocumentPath
+            ? displayWorkspacePath(snapshot.activeDocumentPath, snapshot.rootDir)
+            : null
+        }
       />
     </div>
   );
