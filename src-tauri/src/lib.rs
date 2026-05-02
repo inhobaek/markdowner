@@ -22,8 +22,8 @@ const MENU_COMMAND_SAVE_ACTIVE_DOCUMENT: &str = "save-active-document";
 const MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS: &str = "save-active-document-as";
 const MENU_COMMAND_CLOSE_WINDOW: &str = "close-window";
 const MENU_COMMAND_SET_MODE_WYSIWYG: &str = "mode-wysiwyg";
-const MENU_COMMAND_SET_MODE_SOURCE: &str = "mode-editor";
-const MENU_COMMAND_SET_MODE_PREVIEW: &str = "mode-splitview";
+const MENU_COMMAND_SET_MODE_EDITOR: &str = "mode-editor";
+const MENU_COMMAND_SET_MODE_SPLITVIEW: &str = "mode-splitview";
 const MENU_FILE_TITLE: &str = "File";
 const MENU_VIEW_TITLE: &str = "View";
 
@@ -69,7 +69,7 @@ const FILE_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
 
 const VIEW_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
     MenuCommandDescriptor {
-        id: MENU_COMMAND_SET_MODE_SOURCE,
+        id: MENU_COMMAND_SET_MODE_EDITOR,
         label: "Editor",
         accelerator: "CmdOrCtrl+1",
     },
@@ -79,7 +79,7 @@ const VIEW_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
         accelerator: "CmdOrCtrl+2",
     },
     MenuCommandDescriptor {
-        id: MENU_COMMAND_SET_MODE_PREVIEW,
+        id: MENU_COMMAND_SET_MODE_SPLITVIEW,
         label: "Split-view",
         accelerator: "CmdOrCtrl+3",
     },
@@ -283,8 +283,8 @@ fn menu_command_from_id(id: &str) -> Option<&'static str> {
         MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS => Some(MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS),
         MENU_COMMAND_CLOSE_WINDOW => Some(MENU_COMMAND_CLOSE_WINDOW),
         MENU_COMMAND_SET_MODE_WYSIWYG => Some(MENU_COMMAND_SET_MODE_WYSIWYG),
-        MENU_COMMAND_SET_MODE_SOURCE => Some(MENU_COMMAND_SET_MODE_SOURCE),
-        MENU_COMMAND_SET_MODE_PREVIEW => Some(MENU_COMMAND_SET_MODE_PREVIEW),
+        MENU_COMMAND_SET_MODE_EDITOR => Some(MENU_COMMAND_SET_MODE_EDITOR),
+        MENU_COMMAND_SET_MODE_SPLITVIEW => Some(MENU_COMMAND_SET_MODE_SPLITVIEW),
         _ => None,
     }
 }
@@ -512,7 +512,7 @@ mod tests {
     use super::{
         DesktopBackend, FILE_MENU_COMMANDS, MENU_COMMAND_CLOSE_WINDOW, MENU_COMMAND_NEW_DOCUMENT,
         MENU_COMMAND_OPEN_DOCUMENT, MENU_COMMAND_OPEN_WORKSPACE, MENU_COMMAND_SAVE_ACTIVE_DOCUMENT,
-        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS, MENU_COMMAND_SET_MODE_PREVIEW, MENU_FILE_TITLE,
+        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS, MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_FILE_TITLE,
         MENU_VIEW_TITLE, VIEW_MENU_COMMANDS, menu_command_from_id,
     };
 
@@ -660,9 +660,9 @@ mod tests {
                 .map(|descriptor| descriptor.id)
                 .collect::<Vec<_>>(),
             vec![
-                super::MENU_COMMAND_SET_MODE_SOURCE,
+                super::MENU_COMMAND_SET_MODE_EDITOR,
                 super::MENU_COMMAND_SET_MODE_WYSIWYG,
-                MENU_COMMAND_SET_MODE_PREVIEW,
+                MENU_COMMAND_SET_MODE_SPLITVIEW,
             ]
         );
         assert_eq!(
@@ -702,8 +702,8 @@ mod tests {
     #[test]
     fn menu_command_mapping_only_accepts_supported_command_ids() {
         assert_eq!(
-            menu_command_from_id(MENU_COMMAND_SET_MODE_PREVIEW),
-            Some(MENU_COMMAND_SET_MODE_PREVIEW)
+            menu_command_from_id(MENU_COMMAND_SET_MODE_SPLITVIEW),
+            Some(MENU_COMMAND_SET_MODE_SPLITVIEW)
         );
         assert_eq!(
             menu_command_from_id(MENU_COMMAND_CLOSE_WINDOW),
