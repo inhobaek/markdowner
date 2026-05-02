@@ -138,6 +138,7 @@ describe('App recent documents', () => {
     onCloseRequestedMock.mockReset();
     listenMock.mockReset();
     hasActiveDocumentExternalChangesMock.mockReset();
+    invokeMock.mockReset();
     closeRequestedHandler = undefined;
     menuCommandHandler = undefined;
     onCloseRequestedMock.mockImplementation(async (handler) => {
@@ -1083,6 +1084,100 @@ describe('App recent documents', () => {
     await waitFor(() => {
       expect(surface.style.fontFamily).toContain('Fira Code');
     });
+  });
+
+  it('auto-saves the active document after edits when autoSave setting is enabled', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          autoSave: true,
+          editorFontSize: 14,
+          editorFontFamily: '',
+        };
+      }
+      return undefined;
+    });
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: '# Notes',
+        mode: 'Editor',
+      }),
+    );
+    replaceActiveDocumentSourceMock.mockImplementation(async (source: string) =>
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: source,
+        activeDocumentDirty: true,
+        mode: 'Editor',
+      }),
+    );
+    saveActiveDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: '# Notes edited',
+        activeDocumentDirty: false,
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const sourceEditor = await screen.findByLabelText('Source editor');
+    fireEvent.change(sourceEditor, { target: { value: '# Notes edited' } });
+
+    await waitFor(
+      () => {
+        expect(saveActiveDocumentMock).toHaveBeenCalled();
+      },
+      { timeout: 4000 },
+    );
+  });
+
+  it('does not auto-save when autoSave setting is disabled', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          autoSave: false,
+          editorFontSize: 14,
+          editorFontFamily: '',
+        };
+      }
+      return undefined;
+    });
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: '# Notes',
+        mode: 'Editor',
+      }),
+    );
+    replaceActiveDocumentSourceMock.mockImplementation(async (source: string) =>
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: source,
+        activeDocumentDirty: true,
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const sourceEditor = await screen.findByLabelText('Source editor');
+    fireEvent.change(sourceEditor, { target: { value: '# Notes edited' } });
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    expect(saveActiveDocumentMock).not.toHaveBeenCalled();
   });
 
   it('opens a Markdown document from the native menu event', async () => {

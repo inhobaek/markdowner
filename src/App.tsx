@@ -849,6 +849,33 @@ export default function App() {
     });
   };
 
+  const triggerAutoSave = useEffectEvent(() => {
+    if (!settings.autoSave) return;
+    if (busy) return;
+    if (!activeDocumentOpen) return;
+    if (!snapshot.activeDocumentPath) return;
+    if (!hasUnsavedChanges) return;
+    void handleSave();
+  });
+
+  useEffect(() => {
+    if (!settings.autoSave) return;
+    if (!activeDocumentOpen) return;
+    if (!snapshot.activeDocumentPath) return;
+    if (!hasUnsavedChanges) return;
+
+    const timer = window.setTimeout(() => {
+      triggerAutoSave();
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [
+    settings.autoSave,
+    activeDocumentOpen,
+    snapshot.activeDocumentPath,
+    hasUnsavedChanges,
+    localDraft,
+  ]);
+
   const handleSetMode = async (nextMode: EditorMode) => {
     await withBusy(async () => {
       await syncActiveDraft();
