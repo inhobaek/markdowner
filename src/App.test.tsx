@@ -1151,6 +1151,26 @@ describe('App recent documents', () => {
     expect(searchButton).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('marks the Header Toggle Sidebar button as pressed while the Sidebar is open', async () => {
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const toggleButton = await screen.findByRole('button', { name: /^toggle sidebar$/i });
+
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(toggleButton);
+
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(toggleButton);
+
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('opens the Command Palette with Cmd+Shift+P and runs a selected command', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({

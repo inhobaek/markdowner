@@ -1359,10 +1359,11 @@ export default function App() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className={cn('h-8 w-8', isSidebarOpen && 'bg-accent text-accent-foreground')}
               onClick={handleToggleSidebar}
               title="Toggle Sidebar (Cmd+B)"
               aria-label="Toggle Sidebar"
+              aria-pressed={isSidebarOpen}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-left"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
             </Button>
