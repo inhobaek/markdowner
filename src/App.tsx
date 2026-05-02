@@ -1309,13 +1309,24 @@ export default function App() {
           ) : null}
 
           {activeDocumentOpen && currentMode === 'SplitView' ? (
-            <div
-              className={cn(
-                'markdown-surface min-h-0 flex-1 overflow-auto px-8 py-6',
-                MARKDOWN_CONTENT_SCOPE_CLASS,
-              )}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{previewSource}</ReactMarkdown>
+            <div className="flex min-h-0 flex-1 divide-x divide-border">
+              <div className="flex-1 overflow-auto">
+                <CodeMirror
+                  value={localDraft}
+                  height="100%"
+                  extensions={[markdown()]}
+                  onChange={(value) => setLocalDraft(value)}
+                  theme={snapshot.theme.kind === 'BuiltInDark' ? 'dark' : 'light'}
+                />
+              </div>
+              <div
+                className={cn(
+                  'markdown-surface flex-1 overflow-auto px-8 py-6',
+                  MARKDOWN_CONTENT_SCOPE_CLASS,
+                )}
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{previewSource}</ReactMarkdown>
+              </div>
             </div>
           ) : null}
         </section>
