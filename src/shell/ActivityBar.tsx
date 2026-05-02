@@ -21,12 +21,12 @@ export function ActivityBar({ className, onToggleSidebar, isSidebarOpen }: Activ
         >
           <Files className="w-5 h-5" />
         </Button>
-        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-md text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-md text-muted-foreground hover:text-foreground" title="Search (Cmd+Shift+F)">
           <Search className="w-5 h-5" />
         </Button>
       </div>
       <div className="mt-auto flex flex-col gap-2 w-full px-2 mb-2">
-        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-md text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-md text-muted-foreground hover:text-foreground" title="Settings (Cmd+,)">
           <Settings className="w-5 h-5" />
         </Button>
       </div>
