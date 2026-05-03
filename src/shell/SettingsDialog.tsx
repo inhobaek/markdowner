@@ -134,6 +134,15 @@ export function SettingsDialog({
               />
             </div>
 
+            <div className="flex items-center justify-between mt-2">
+              <Label htmlFor="typewriter-mode" className="text-sm">Typewriter Mode</Label>
+              <Switch
+                id="typewriter-mode"
+                checked={settings.typewriterModeEnabled}
+                onCheckedChange={(checked) => handleSettingChange('typewriterModeEnabled', checked)}
+              />
+            </div>
+
             <div className="flex items-center justify-between gap-4 mt-2">
               <Label htmlFor="default-mode" className="text-sm">Default Startup Mode</Label>
               <ToggleGroup

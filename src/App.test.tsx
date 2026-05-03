@@ -2607,6 +2607,38 @@ describe('App recent documents', () => {
     });
   });
 
+  it('persists Typewriter Mode changes from the Settings dialog through save_settings', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          autoSave: false,
+          editorFontSize: 14,
+          editorFontFamily: '',
+          editorLineWrap: true,
+          typewriterModeEnabled: false,
+        };
+      }
+      return undefined;
+    });
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    const typewriterModeToggle = within(dialog).getByLabelText(/typewriter mode/i);
+
+    fireEvent.click(typewriterModeToggle);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('save_settings', {
+        settings: expect.objectContaining({ typewriterModeEnabled: true }),
+      });
+    });
+  });
+
   it('persists PDF Paper Size changes from the Settings dialog through save_settings', async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'load_settings') {
