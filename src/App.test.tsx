@@ -486,6 +486,48 @@ describe('App recent documents', () => {
     ).toBeInTheDocument();
   });
 
+  it('opens the Document Stats dialog with Cmd+Shift+I and shows derived document counts', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: [
+          '---',
+          'title: Meeting Notes',
+          '---',
+          '',
+          '# Agenda',
+          '',
+          'Review the [spec](https://example.com/spec).',
+          '',
+          '![Diagram](./assets/diagram.png)',
+          '',
+          '| Task | Owner |',
+          '| --- | --- |',
+          '| Ship | Team |',
+        ].join('\n'),
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByText(/^meeting-notes\.md$/);
+
+    fireEvent.keyDown(window, { key: 'I', metaKey: true, shiftKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /document stats/i });
+
+    expect(within(dialog).getByText(/^meeting-notes\.md$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^26$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^166$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^~1 min$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^1$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^1 table$/)).toBeInTheDocument();
+  });
+
   it('omits document statistics when no document is open', async () => {
     bootstrapMock.mockResolvedValue(baseSnapshot());
 
@@ -1323,6 +1365,35 @@ describe('App recent documents', () => {
     await waitFor(() => {
       expect(setModeMock).toHaveBeenCalledWith('SplitView');
     });
+  });
+
+  it('opens the Document Stats dialog from the Command Palette', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'P', metaKey: true, shiftKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /command palette/i });
+    const input = within(dialog).getByRole('textbox', { name: /command palette search/i });
+
+    fireEvent.change(input, { target: { value: 'document stats' } });
+
+    const option = await within(dialog).findByRole('option', {
+      name: /open document stats/i,
+    });
+    fireEvent.click(option);
+
+    expect(await screen.findByRole('dialog', { name: /document stats/i })).toBeInTheDocument();
   });
 
   it('renders friendly mode labels in the header toggle and status bar', async () => {

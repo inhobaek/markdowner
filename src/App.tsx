@@ -34,6 +34,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { ActivityBar } from '@/shell/ActivityBar';
 import { CommandPalette, type CommandPaletteCommand } from '@/shell/CommandPalette';
+import { DocumentStatsDialog } from '@/shell/DocumentStatsDialog';
 import { EditorArea } from '@/shell/EditorArea';
 import { Header } from '@/shell/Header';
 import { QuickOpen, type QuickOpenItem } from '@/shell/QuickOpen';
@@ -378,6 +379,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isDocumentStatsOpen, setIsDocumentStatsOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [debouncedLocalDraft, setDebouncedLocalDraft] = useState(localDraft);
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({
@@ -397,7 +399,35 @@ export default function App() {
     const trimmed = localDraft.trim();
     const words = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
     const readingTimeMinutes = words === 0 ? 0 : Math.max(1, Math.ceil(words / 200));
-    return { words, characters, readingTimeMinutes };
+
+    const headingMatches = localDraft.match(/^#{1,6}\s+.+$/gm) ?? [];
+    const imageMatches = localDraft.match(/!\[[^\]]*]\([^\n)]+\)/g) ?? [];
+    const links = localDraft.replace(/!\[[^\]]*]\([^\n)]+\)/g, '').match(/\[[^\]]+]\([^\n)]+\)/g) ?? [];
+
+    const lines = localDraft.split(/\r?\n/);
+    const isTableRow = (line: string) => line.includes('|') && line.trim().length > 0;
+    const isTableSeparator = (line: string) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+
+    let tables = 0;
+    for (let index = 1; index < lines.length - 1; index += 1) {
+      if (!isTableSeparator(lines[index] ?? '')) {
+        continue;
+      }
+
+      if (isTableRow(lines[index - 1] ?? '') && isTableRow(lines[index + 1] ?? '')) {
+        tables += 1;
+      }
+    }
+
+    return {
+      words,
+      characters,
+      readingTimeMinutes,
+      headings: headingMatches.length,
+      links: links.length,
+      images: imageMatches.length,
+      tables,
+    };
   }, [localDraft]);
   const themeMode: ThemeMode = settings.themeFollowSystem ? 'system' : 'manual';
 
@@ -1092,6 +1122,16 @@ export default function App() {
         return;
       }
 
+      if (matchesShortcut(event, 'i', { shift: true })) {
+        if (!activeDocumentOpen) {
+          return;
+        }
+
+        event.preventDefault();
+        setIsDocumentStatsOpen((prev) => !prev);
+        return;
+      }
+
       if (matchesShortcut(event, 'o')) {
         event.preventDefault();
         void handleOpenDocument();
@@ -1397,6 +1437,14 @@ export default function App() {
       run: () => setIsSettingsOpen(true),
     },
     {
+      id: 'app.documentStats',
+      category: 'Preferences',
+      label: 'Open Document Stats',
+      shortcut: '⌘⇧I',
+      disabled: !activeDocumentOpen,
+      run: () => setIsDocumentStatsOpen(true),
+    },
+    {
       id: 'preferences.resetDefaults',
       category: 'Preferences',
       label: 'Reset Settings to Defaults',
@@ -1685,6 +1733,13 @@ export default function App() {
         open={isCommandPaletteOpen}
         onOpenChange={setIsCommandPaletteOpen}
         commands={paletteCommands}
+      />
+      <DocumentStatsDialog
+        open={isDocumentStatsOpen}
+        onOpenChange={setIsDocumentStatsOpen}
+        documentName={snapshot.activeDocumentName}
+        documentPath={snapshot.activeDocumentPath}
+        stats={documentStats}
       />
 
       <StatusBar
