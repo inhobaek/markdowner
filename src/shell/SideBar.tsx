@@ -67,7 +67,12 @@ export function SideBar({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Workspace
         </div>
-        <Button onClick={onNewDocument} disabled={busy} title="New Document (Cmd+N)">
+        <Button
+          onClick={onNewDocument}
+          disabled={busy}
+          title="New Document (Cmd+N)"
+          aria-keyshortcuts="Meta+N Control+N"
+        >
           New Document
         </Button>
         <Button
@@ -75,6 +80,7 @@ export function SideBar({
           onClick={onOpenWorkspace}
           disabled={busy}
           title="Open Folder (Cmd+Shift+O)"
+          aria-keyshortcuts="Meta+Shift+O Control+Shift+O"
         >
           Open Folder…
         </Button>
@@ -83,6 +89,7 @@ export function SideBar({
           onClick={onOpenDocument}
           disabled={busy}
           title="Open Markdown (Cmd+O)"
+          aria-keyshortcuts="Meta+O Control+O"
         >
           Open Markdown…
         </Button>

@@ -806,6 +806,31 @@ describe('App recent documents', () => {
     expect(openMarkdownButton).toHaveAttribute('title', 'Open Markdown (Cmd+O)');
   });
 
+  it('exposes aria-keyshortcuts on the SideBar workspace action buttons', async () => {
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const newDocumentButton = await screen.findByRole('button', {
+      name: /^new document$/i,
+    });
+    const openFolderButton = screen.getByRole('button', {
+      name: /^open folder…$/i,
+    });
+    const openMarkdownButton = screen.getByRole('button', {
+      name: /^open markdown…$/i,
+    });
+
+    expect(newDocumentButton).toHaveAttribute('aria-keyshortcuts', 'Meta+N Control+N');
+    expect(openFolderButton).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+Shift+O Control+Shift+O',
+    );
+    expect(openMarkdownButton).toHaveAttribute('aria-keyshortcuts', 'Meta+O Control+O');
+  });
+
   it('creates an untitled document and saves it through Save As', async () => {
     newDocumentMock.mockResolvedValue(
       baseSnapshot({
