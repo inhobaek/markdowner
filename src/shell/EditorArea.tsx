@@ -160,6 +160,7 @@ export function EditorArea({
                       onClick={onNewDocument}
                       disabled={busy}
                       title="New File (Cmd+N)"
+                      aria-keyshortcuts="Meta+N Control+N"
                     >
                       New File
                     </Button>
@@ -171,6 +172,7 @@ export function EditorArea({
                       onClick={onOpenDocument}
                       disabled={busy}
                       title="Open File (Cmd+O)"
+                      aria-keyshortcuts="Meta+O Control+O"
                     >
                       Open File…
                     </Button>
@@ -182,6 +184,7 @@ export function EditorArea({
                       onClick={onOpenWorkspace}
                       disabled={busy}
                       title="Open Workspace (Cmd+Shift+O)"
+                      aria-keyshortcuts="Meta+Shift+O Control+Shift+O"
                     >
                       Open Workspace…
                     </Button>

@@ -228,6 +228,25 @@ describe('App recent documents', () => {
     });
   });
 
+  it('exposes aria-keyshortcuts on the EditorArea empty-state action buttons', async () => {
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const newFileButton = await screen.findByRole('button', { name: /^new file$/i });
+    const openFileButton = screen.getByRole('button', { name: /^open file…$/i });
+    const openWorkspaceButton = screen.getByRole('button', { name: /^open workspace…$/i });
+
+    expect(newFileButton).toHaveAttribute('aria-keyshortcuts', 'Meta+N Control+N');
+    expect(openFileButton).toHaveAttribute('aria-keyshortcuts', 'Meta+O Control+O');
+    expect(openWorkspaceButton).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+Shift+O Control+Shift+O',
+    );
+  });
+
   it('reopens a recent document from the sidebar', async () => {
     const { default: App } = await import('./App');
 
