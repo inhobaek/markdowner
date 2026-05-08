@@ -1938,6 +1938,64 @@ describe('App recent documents', () => {
     );
   });
 
+  it('flips the optimistic mode before awaiting set_mode and skips replaceActiveDocumentSource on a clean draft', async () => {
+    // FR-PERF-001 / FR-PERF-002 contract:
+    //   1. Mode UI must update before set_mode resolves (optimistic-first).
+    //   2. When the live draft already equals the snapshot source, the
+    //      mode-switch hot path must NOT call replaceActiveDocumentSource —
+    //      that round-trip is reserved for dirty drafts only.
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'Wysiwyg',
+      }),
+    );
+    let resolveMode: ((snapshot: AppSnapshot) => void) | undefined;
+    setModeMock.mockReturnValue(
+      new Promise<AppSnapshot>((resolve) => {
+        resolveMode = resolve;
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findAllByText(/^meeting-notes\.md/);
+    expect(screen.queryByRole('textbox', { name: /source editor/i })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    fireEvent.keyDown(window, { key: 'e', metaKey: true });
+
+    await waitFor(() => {
+      expect(setModeMock).toHaveBeenCalledWith('Editor');
+    });
+
+    // Optimistic flip is visible while set_mode is still pending.
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: /source editor/i })).toBeInTheDocument();
+    });
+    expect(setModeMock).toHaveResolvedTimes(0);
+
+    // Clean draft → no replaceActiveDocumentSource on the mode-switch hot path.
+    expect(replaceActiveDocumentSourceMock).not.toHaveBeenCalled();
+
+    resolveMode?.(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: '# Meeting notes',
+        mode: 'Editor',
+      }),
+    );
+    await waitFor(() => {
+      expect(setModeMock).toHaveResolvedTimes(1);
+    });
+    expect(replaceActiveDocumentSourceMock).not.toHaveBeenCalled();
+  });
+
   it('keeps the latest mode selected when earlier mode persistence resolves later', async () => {
     const pendingModeResolutions = new Map<EditorMode, (snapshot: AppSnapshot) => void>();
 
