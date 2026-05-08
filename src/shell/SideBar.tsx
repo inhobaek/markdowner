@@ -179,15 +179,17 @@ export function SideBar({
                       key={path}
                       type="button"
                       className={cn(
-                        'flex w-full flex-col items-start gap-0.5 rounded-md border border-transparent px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50',
+                        'flex w-full flex-col items-start gap-1 rounded-md border border-transparent px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50',
                         isActive && 'border-border bg-accent text-accent-foreground',
                       )}
                       onClick={() => onOpenRecentDocument(path)}
                       disabled={busy}
                       title={path}
                     >
-                      <span className="truncate font-medium">{displayFileName(path)}</span>
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span className="w-full font-medium leading-snug break-all">
+                        {displayFileName(path)}
+                      </span>
+                      <span className="w-full text-xs leading-snug text-muted-foreground break-all">
                         {displayWorkspacePath(path, rootDir)}
                       </span>
                     </button>
