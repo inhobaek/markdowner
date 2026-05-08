@@ -3733,12 +3733,48 @@ describe('App recent documents', () => {
 
     await waitFor(() => {
       expect(openDialogMock).toHaveBeenCalledWith({
-        multiple: false,
+        multiple: true,
         directory: false,
         filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd'] }],
       });
       expect(openDocumentMock).toHaveBeenCalledWith('/tmp/project/from-menu.md');
     });
+  });
+
+  it('opens multiple Markdown documents as tabs when the dialog returns an array', async () => {
+    openDialogMock.mockResolvedValue([
+      '/tmp/project/alpha.md',
+      '/tmp/project/beta.md',
+      '/tmp/project/gamma.md',
+    ]);
+    openDocumentMock.mockImplementation(async (path: string) => {
+      const name = path.split('/').pop() ?? path;
+      return baseSnapshot({
+        activeDocumentName: name,
+        activeDocumentPath: path,
+        activeDocumentSource: `# ${name}`,
+      });
+    });
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(menuCommandHandler).toBeTypeOf('function');
+    });
+
+    await menuCommandHandler?.({ payload: 'open-document' });
+
+    await waitFor(() => {
+      expect(openDocumentMock).toHaveBeenCalledTimes(3);
+    });
+    expect(openDocumentMock).toHaveBeenNthCalledWith(1, '/tmp/project/alpha.md');
+    expect(openDocumentMock).toHaveBeenNthCalledWith(2, '/tmp/project/beta.md');
+    expect(openDocumentMock).toHaveBeenNthCalledWith(3, '/tmp/project/gamma.md');
+
+    const tablist = await screen.findByRole('tablist');
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
   });
 
   it('opens a recent document from the native menu event', async () => {

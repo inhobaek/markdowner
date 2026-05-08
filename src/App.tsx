@@ -1406,28 +1406,70 @@ export default function App() {
 
   const handleOpenDocument = async () => {
     const selected = await openDialog({
-      multiple: false,
+      multiple: true,
       directory: false,
       filters: [{ name: 'Markdown', extensions: MARKDOWN_FILE_EXTENSIONS }],
     });
 
-    if (typeof selected !== 'string') {
+    if (selected === null || selected === undefined) {
+      return;
+    }
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (paths.length === 0) {
       return;
     }
 
-    // Already open: just switch
-    const existing = findTabByPath(selected);
-    if (existing) {
-      void switchToTab(existing.id);
-      return;
+    // Single-path shortcut: just switch if it's already open.
+    if (paths.length === 1) {
+      const existing = findTabByPath(paths[0]);
+      if (existing) {
+        void switchToTab(existing.id);
+        return;
+      }
     }
 
     await withBusy(async () => {
       stashActiveTabDraft();
       await syncActiveDraft();
-      const next = await openDocument(selected);
-      applySnapshot(next);
-      upsertActiveTabFromSnapshot(next);
+
+      // Accumulate new tabs locally so we can commit them in one batched
+      // update at the end. Per-iteration setTabs would overwrite earlier
+      // additions because each call reads the same stale closure value.
+      const additions: DocumentTab[] = [];
+      let lastSnapshot: AppSnapshot | null = null;
+      let lastActiveId: string | null = null;
+
+      for (const path of paths) {
+        const existing =
+          findTabByPath(path) ?? additions.find((tab) => tab.path === path);
+        if (existing) {
+          lastActiveId = existing.id;
+          continue;
+        }
+        const next = await openDocument(path);
+        const tab: DocumentTab = {
+          id: generateTabId(),
+          path: next.activeDocumentPath ?? path,
+          name: next.activeDocumentName ?? path,
+          source: next.activeDocumentSource ?? '',
+          draft: next.activeDocumentSource ?? '',
+        };
+        additions.push(tab);
+        lastSnapshot = next;
+        lastActiveId = tab.id;
+      }
+
+      if (additions.length > 0 && lastSnapshot && lastActiveId) {
+        const finalActiveId = lastActiveId;
+        startTransition(() => {
+          setTabs((prev) => [...prev, ...additions]);
+          setActiveTabId(finalActiveId);
+        });
+        applySnapshot(lastSnapshot);
+      } else if (lastActiveId) {
+        // Every selected file was already open — switch to the last one.
+        void switchToTab(lastActiveId);
+      }
     });
   };
 
@@ -2117,10 +2159,17 @@ export default function App() {
     }
   };
 
-  // Cmd+W / File → Close: close the active tab when more than one is open;
-  // otherwise fall through to closing the window. The handleCloseTab path
-  // delegates back to handleWindowCloseCommand when the last tab is closed.
+  // Cmd+W / File → Close:
+  // - 0 tabs (nothing open): close the window directly. There is nothing to
+  //   be dirty about, so skip the close confirmation flow entirely.
+  // - 2+ tabs: close the active tab.
+  // - 1 tab: fall through to handleWindowCloseCommand so the dirty prompt
+  //   still runs for an unsaved active document.
   const handleCloseTabOrWindow = useEffectEvent(async () => {
+    if (tabs.length === 0) {
+      await getCurrentWindow().destroy();
+      return;
+    }
     if (tabs.length > 1 && activeTabId) {
       await handleCloseTab(activeTabId);
       return;
