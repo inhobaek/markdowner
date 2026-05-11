@@ -7,7 +7,6 @@ import {
   save as saveDialog,
 } from '@tauri-apps/plugin-dialog';
 import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
 import { Table } from '@tiptap/extension-table';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
@@ -1411,8 +1410,11 @@ export default function App() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Link.configure({ openOnClick: false }),
+      StarterKit.configure({
+        link: {
+          openOnClick: false,
+        },
+      }),
       Image,
       Table.configure({ resizable: true }),
       TableRow,
@@ -2598,9 +2600,15 @@ export default function App() {
             const firstPath = paths[0];
             if (!firstPath) return;
             await withBusy(async () => {
+              stashActiveTabDraft();
               await syncActiveDraftBestEffort();
               const next = await openDroppedPath(firstPath);
-              applySnapshot(next, true);
+              const openedDocument =
+                next.activeDocumentSource !== null && next.activeDocumentPath === firstPath;
+              applySnapshot(next, !openedDocument);
+              if (openedDocument) {
+                upsertActiveTabFromSnapshot(next);
+              }
             });
           }
         }
