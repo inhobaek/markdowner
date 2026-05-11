@@ -410,4 +410,81 @@ describe('App core Markdown editing flow', () => {
       runtimeErrors.restore();
     }
   });
+
+  it('restores persisted Markdown tabs before saving the open-tab session', async () => {
+    const restoredPath = '/tmp/project/restored.md';
+    const restoredSource = ['# Restored file', '', 'Loaded from the previous session.'].join('\n');
+    loadOpenTabsMock.mockResolvedValue({
+      openTabs: [restoredPath],
+      activeTabPath: restoredPath,
+    });
+    openDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'restored.md',
+        activeDocumentPath: restoredPath,
+        activeDocumentSource: restoredSource,
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    expect(await screen.findByRole('tab', { name: /restored\.md/i })).toBeInTheDocument();
+    expect(screen.getByText('Restored file')).toBeInTheDocument();
+
+    expect(saveOpenTabsMock).not.toHaveBeenCalledWith({
+      openTabs: [],
+      activeTabPath: null,
+    });
+    await waitFor(() => {
+      expect(saveOpenTabsMock).toHaveBeenCalledWith({
+        openTabs: [restoredPath],
+        activeTabPath: restoredPath,
+      });
+    });
+  });
+
+  it('keeps Settings visible when opened while persisted Markdown tabs are restoring', async () => {
+    const restoredPath = '/tmp/project/restored-while-settings.md';
+    let resolveOpenTabs:
+      | ((payload: { openTabs: string[]; activeTabPath: string | null }) => void)
+      | undefined;
+    loadOpenTabsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveOpenTabs = resolve;
+      }),
+    );
+    openDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'restored-while-settings.md',
+        activeDocumentPath: restoredPath,
+        activeDocumentSource: '# Restored while settings',
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const settingsButton = await screen.findByRole('button', { name: /^settings \(cmd\+,\)$/i });
+    fireEvent.click(settingsButton);
+    expect(await screen.findByTestId('settings-panel')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveOpenTabs?.({
+        openTabs: [restoredPath],
+        activeTabPath: restoredPath,
+      });
+    });
+
+    expect(await screen.findByRole('tab', { name: /^settings$/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('settings-panel')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /restored-while-settings\.md/i })).toBeInTheDocument();
+  });
 });

@@ -722,6 +722,7 @@ export default function App() {
   // is mirrored through Rust's single-active-document model on switch.
   const [tabs, setTabs] = useState<DocumentTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [startupTabsReady, setStartupTabsReady] = useState(false);
   // Mirror tabs/activeTabId in refs so async callbacks (bootstrap.then,
   // openDocument.then) can read the *current* values instead of stale
   // closures — without this, a user opening Settings before bootstrap
@@ -777,7 +778,7 @@ export default function App() {
   // activeDocumentOpen=false right after a fresh open.
   const upsertActiveTabFromSnapshot = (
     next: AppSnapshot,
-    options: { reuseTabId?: string | null } = {},
+    options: { reuseTabId?: string | null; markStartupTabsReady?: boolean } = {},
   ) => {
     const path = next.activeDocumentPath ?? null;
     const name = next.activeDocumentName ?? 'Untitled';
@@ -844,6 +845,9 @@ export default function App() {
     startTransition(() => {
       setTabs(newTabs);
       setActiveTabId(committedActiveId);
+      if (options.markStartupTabsReady) {
+        setStartupTabsReady(true);
+      }
     });
   };
 
@@ -1224,7 +1228,7 @@ export default function App() {
 
         applySnapshot(next);
         if (next.activeDocumentSource !== null) {
-          upsertActiveTabFromSnapshot(next);
+          upsertActiveTabFromSnapshot(next, { markStartupTabsReady: true });
           return;
         }
 
@@ -1232,6 +1236,7 @@ export default function App() {
           const persistedTabs = await loadOpenTabs();
           if (cancelled) return;
           if (persistedTabs.openTabs.length === 0) {
+            setStartupTabsReady(true);
             return;
           }
           const restored: DocumentTab[] = [];
@@ -1265,11 +1270,24 @@ export default function App() {
           const target = activePath
             ? restored.find((tab) => tab.path === activePath)
             : restored[0];
+          const currentTabs = tabsRef.current;
+          const currentActiveId = activeTabIdRef.current;
+          const currentDocumentTabs = currentTabs.filter((tab) => tab.kind === 'document');
+          const currentUiTabs = currentTabs.filter((tab) => tab.kind !== 'document');
+          const currentDocumentPaths = new Set(currentDocumentTabs.map((tab) => tab.path));
+          const restoredAdditions = restored.filter((tab) => !currentDocumentPaths.has(tab.path));
+          const mergedTabs = [...currentDocumentTabs, ...restoredAdditions, ...currentUiTabs];
+          const currentActiveStillExists =
+            currentActiveId !== null && mergedTabs.some((tab) => tab.id === currentActiveId);
+          const nextActiveId = currentActiveStillExists
+            ? currentActiveId
+            : target?.id ?? mergedTabs[0]?.id ?? null;
+          tabsRef.current = mergedTabs;
+          activeTabIdRef.current = nextActiveId;
           startTransition(() => {
-            setTabs(restored);
-            if (target) {
-              setActiveTabId(target.id);
-            }
+            setTabs(mergedTabs);
+            setActiveTabId(nextActiveId);
+            setStartupTabsReady(true);
           });
           // Drive the live editor to whichever tab we marked active.
           if (target && target.path && !target.missing) {
@@ -1288,6 +1306,7 @@ export default function App() {
         } catch (error) {
           if (!cancelled) {
             reportOperationError(error, 'Could not restore previous tabs');
+            setStartupTabsReady(true);
           }
         }
       })
@@ -1353,6 +1372,8 @@ export default function App() {
   // Persist open tabs whenever the tab list or active tab changes. Only
   // path-bearing tabs are saved; untitled drafts stay session-local.
   useEffect(() => {
+    if (!startupTabsReady) return;
+
     const paths = tabs
       .map((tab) => tab.path)
       .filter((path): path is string => path !== null);
@@ -1364,7 +1385,7 @@ export default function App() {
     void saveOpenTabs({ openTabs: paths, activeTabPath: activePath }).catch((error) => {
       console.warn('[Markdowner] Failed to persist open tabs:', error);
     });
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, startupTabsReady]);
 
   useEffect(() => {
     const nextFolderKeys = new Set<string>();
