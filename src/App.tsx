@@ -1214,6 +1214,7 @@ export default function App() {
         applySnapshot(next);
         if (next.activeDocumentSource !== null) {
           upsertActiveTabFromSnapshot(next);
+          return;
         }
 
         try {

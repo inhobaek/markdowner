@@ -3975,6 +3975,51 @@ describe('App recent documents', () => {
     expect(screen.getByRole('tab', { name: /launched\.md/i })).toBeInTheDocument();
   });
 
+  it('keeps a CLI-launched Markdown file active instead of replacing it with restored tabs', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'launched.md',
+        activeDocumentPath: '/tmp/project/launched.md',
+        activeDocumentSource: '# Launched from Finder',
+        mode: 'Editor',
+      }),
+    );
+    loadOpenTabsMock.mockResolvedValue({
+      openTabs: ['/tmp/project/previous.md'],
+      activeTabPath: '/tmp/project/previous.md',
+    });
+    openDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'previous.md',
+        activeDocumentPath: '/tmp/project/previous.md',
+        activeDocumentSource: '# Previous session',
+        mode: 'Editor',
+      }),
+    );
+    const runtimeErrors = captureRuntimeErrors();
+
+    try {
+      const { default: App } = await import('./App');
+
+      render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+
+      const sourceEditor = await screen.findByLabelText('Source editor');
+      await waitFor(() => {
+        expect(sourceEditor).toHaveValue('# Launched from Finder');
+      });
+      expect(screen.getByRole('tab', { name: /launched\.md/i })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /previous\.md/i })).not.toBeInTheDocument();
+      expect(openDocumentMock).not.toHaveBeenCalledWith('/tmp/project/previous.md');
+      await runtimeErrors.expectClean();
+    } finally {
+      runtimeErrors.restore();
+    }
+  });
+
   it('closes the window from the native close menu command when document is clean', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({
