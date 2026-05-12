@@ -611,6 +611,62 @@ describe('App recent documents', () => {
     expect(screen.getByRole('button', { name: /^follow-up$/i })).toBeInTheDocument();
   });
 
+  it('renders a terse Outline empty state without marketing copy', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'plain-notes.md',
+        activeDocumentPath: '/tmp/project/plain-notes.md',
+        activeDocumentSource: 'No headings in this draft yet.',
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+
+    expect(await screen.findByText(/^no headings$/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/add markdown headings to see the document outline/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('applies configured Outline density to outline rows', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          outlineFontSize: 11,
+          outlineRowSpacing: 1,
+        };
+      }
+      return undefined;
+    });
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: ['# Agenda', '', '## Decisions'].join('\n'),
+        mode: 'Editor',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+
+    const agenda = await screen.findByRole('button', { name: /^agenda$/i });
+    const outlineList = screen.getByTestId('outline-list');
+
+    await waitFor(() => {
+      expect(agenda).toHaveStyle({ fontSize: '11px' });
+      expect(outlineList).toHaveStyle({ gap: '1px' });
+    });
+  });
+
   it('moves focus to the matching heading when selecting an Outline item in source mode', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({
@@ -2751,6 +2807,8 @@ describe('App recent documents', () => {
           editorFontSize: 14,
           editorFontFamily: '',
           editorLineWrap: true,
+          outlineFontSize: 13,
+          outlineRowSpacing: 2,
           defaultMode: 'Wysiwyg',
           focusModeEnabled: false,
           typewriterModeEnabled: false,
@@ -3268,7 +3326,7 @@ describe('App recent documents', () => {
     fireEvent.keyDown(window, { key: ',', metaKey: true });
 
     const dialog = await screen.findByTestId('settings-panel');
-    const fontSizeInput = within(dialog).getByLabelText(/font size/i);
+    const fontSizeInput = within(dialog).getByLabelText(/^font size$/i);
 
     fireEvent.change(fontSizeInput, { target: { value: '18' } });
 
@@ -3645,6 +3703,42 @@ describe('App recent documents', () => {
     });
   });
 
+  it('persists Outline density changes from the Settings dialog through save_settings', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          outlineFontSize: 13,
+          outlineRowSpacing: 2,
+        };
+      }
+      return undefined;
+    });
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+
+    const dialog = await screen.findByTestId('settings-panel');
+    const fontSizeInput = within(dialog).getByLabelText(/outline font size/i);
+    const rowSpacingInput = within(dialog).getByLabelText(/outline row spacing/i);
+
+    fireEvent.change(fontSizeInput, { target: { value: '12' } });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('save_settings', {
+        settings: expect.objectContaining({ outlineFontSize: 12 }),
+      });
+    });
+
+    fireEvent.change(rowSpacingInput, { target: { value: '1' } });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('save_settings', {
+        settings: expect.objectContaining({ outlineRowSpacing: 1 }),
+      });
+    });
+  });
+
   it('applies Typewriter Mode to the active editor surface when toggled in Settings', async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'load_settings') {
@@ -3853,6 +3947,8 @@ describe('App recent documents', () => {
           editorFontSize: 14,
           editorFontFamily: '',
           editorLineWrap: true,
+          outlineFontSize: 13,
+          outlineRowSpacing: 2,
           defaultMode: 'Wysiwyg',
           focusModeEnabled: false,
           typewriterModeEnabled: false,
@@ -3864,7 +3960,7 @@ describe('App recent documents', () => {
       });
     });
 
-    expect(within(dialog).getByLabelText(/font size/i)).toHaveValue(14);
+    expect(within(dialog).getByLabelText(/^font size$/i)).toHaveValue(14);
     expect(within(dialog).getByLabelText(/font family/i)).toHaveValue('');
   });
 

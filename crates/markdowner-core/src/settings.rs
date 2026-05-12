@@ -9,6 +9,8 @@ pub struct Settings {
     pub editor_font_size: u32,
     pub editor_font_family: String,
     pub editor_line_wrap: bool,
+    pub outline_font_size: u32,
+    pub outline_row_spacing: u32,
     pub default_mode: EditorMode,
     pub focus_mode_enabled: bool,
     pub typewriter_mode_enabled: bool,
@@ -25,6 +27,8 @@ impl Default for Settings {
             editor_font_size: 0,
             editor_font_family: String::new(),
             editor_line_wrap: true,
+            outline_font_size: 13,
+            outline_row_spacing: 2,
             default_mode: EditorMode::Wysiwyg,
             focus_mode_enabled: false,
             typewriter_mode_enabled: false,
@@ -51,20 +55,28 @@ mod tests {
             parsed.editor_line_wrap,
             "missing editorLineWrap should default to true"
         );
+        assert_eq!(parsed.outline_font_size, 13);
+        assert_eq!(parsed.outline_row_spacing, 2);
     }
 
     #[test]
-    fn settings_round_trip_preserves_line_wrap_disabled() {
+    fn settings_round_trip_preserves_editor_density_fields() {
         let original = Settings {
             auto_save: false,
             editor_font_size: 14,
             editor_font_family: String::new(),
             editor_line_wrap: false,
+            outline_font_size: 12,
+            outline_row_spacing: 1,
             ..Default::default()
         };
         let payload = serde_json::to_string(&original).expect("serialize");
         assert!(payload.contains("\"editorLineWrap\":false"));
+        assert!(payload.contains("\"outlineFontSize\":12"));
+        assert!(payload.contains("\"outlineRowSpacing\":1"));
         let parsed: Settings = serde_json::from_str(&payload).expect("parse");
         assert!(!parsed.editor_line_wrap);
+        assert_eq!(parsed.outline_font_size, 12);
+        assert_eq!(parsed.outline_row_spacing, 1);
     }
 }

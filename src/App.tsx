@@ -77,6 +77,10 @@ import {
 } from './lib/desktop';
 import {
   DEFAULT_SETTINGS,
+  OUTLINE_FONT_SIZE_MAX,
+  OUTLINE_FONT_SIZE_MIN,
+  OUTLINE_ROW_SPACING_MAX,
+  OUTLINE_ROW_SPACING_MIN,
   type Settings,
   loadSettings,
   saveSettings,
@@ -2921,6 +2925,20 @@ export default function App() {
           displayFileName={displayFileName}
           displayWorkspacePath={displayWorkspacePath}
           outlineItems={outlineItems}
+          outlineFontSize={Math.min(
+            OUTLINE_FONT_SIZE_MAX,
+            Math.max(
+              OUTLINE_FONT_SIZE_MIN,
+              settings.outlineFontSize || DEFAULT_SETTINGS.outlineFontSize,
+            ),
+          )}
+          outlineRowSpacing={Math.min(
+            OUTLINE_ROW_SPACING_MAX,
+            Math.max(
+              OUTLINE_ROW_SPACING_MIN,
+              settings.outlineRowSpacing ?? DEFAULT_SETTINGS.outlineRowSpacing,
+            ),
+          )}
           onSelectOutlineItem={handleSelectOutlineItem}
         />
         <div

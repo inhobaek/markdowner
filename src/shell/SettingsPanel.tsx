@@ -4,7 +4,14 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DEFAULT_SETTINGS, type Settings } from '@/lib/settings';
+import {
+  DEFAULT_SETTINGS,
+  OUTLINE_FONT_SIZE_MAX,
+  OUTLINE_FONT_SIZE_MIN,
+  OUTLINE_ROW_SPACING_MAX,
+  OUTLINE_ROW_SPACING_MIN,
+  type Settings,
+} from '@/lib/settings';
 
 export type { Settings } from '@/lib/settings';
 
@@ -26,7 +33,24 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
     onSettingsChange({ ...settings, [key]: value });
   };
 
+  const handleBoundedNumberChange = <K extends keyof Settings>(
+    key: K,
+    rawValue: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ) => {
+    const parsed = Number.parseInt(rawValue, 10);
+    const nextValue = Number.isFinite(parsed)
+      ? Math.min(max, Math.max(min, parsed))
+      : fallback;
+    handleSettingChange(key, nextValue as Settings[K]);
+  };
+
   const fontSizeValue = settings.editorFontSize || DEFAULT_SETTINGS.editorFontSize;
+  const outlineFontSizeValue = settings.outlineFontSize || DEFAULT_SETTINGS.outlineFontSize;
+  const outlineRowSpacingValue =
+    settings.outlineRowSpacing ?? DEFAULT_SETTINGS.outlineRowSpacing;
 
   return (
     <section
@@ -97,6 +121,48 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
               className="h-8 w-full min-w-0"
               value={settings.editorFontFamily}
               onChange={(event) => handleSettingChange('editorFontFamily', event.target.value)}
+            />
+          </div>
+
+          <div className={inputFieldClass}>
+            <Label htmlFor="outline-font-size" className="text-sm">Outline Font Size</Label>
+            <Input
+              id="outline-font-size"
+              type="number"
+              min={OUTLINE_FONT_SIZE_MIN}
+              max={OUTLINE_FONT_SIZE_MAX}
+              className="h-8 w-full min-w-0"
+              value={outlineFontSizeValue}
+              onChange={(event) => {
+                handleBoundedNumberChange(
+                  'outlineFontSize',
+                  event.target.value,
+                  DEFAULT_SETTINGS.outlineFontSize,
+                  OUTLINE_FONT_SIZE_MIN,
+                  OUTLINE_FONT_SIZE_MAX,
+                );
+              }}
+            />
+          </div>
+
+          <div className={inputFieldClass}>
+            <Label htmlFor="outline-row-spacing" className="text-sm">Outline Row Spacing</Label>
+            <Input
+              id="outline-row-spacing"
+              type="number"
+              min={OUTLINE_ROW_SPACING_MIN}
+              max={OUTLINE_ROW_SPACING_MAX}
+              className="h-8 w-full min-w-0"
+              value={outlineRowSpacingValue}
+              onChange={(event) => {
+                handleBoundedNumberChange(
+                  'outlineRowSpacing',
+                  event.target.value,
+                  DEFAULT_SETTINGS.outlineRowSpacing,
+                  OUTLINE_ROW_SPACING_MIN,
+                  OUTLINE_ROW_SPACING_MAX,
+                );
+              }}
             />
           </div>
 

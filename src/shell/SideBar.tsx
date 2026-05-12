@@ -30,6 +30,8 @@ export interface SideBarProps {
   displayFileName: (path: string) => string;
   displayWorkspacePath: (path: string, rootDir: string | null) => string;
   outlineItems: OutlineItem[];
+  outlineFontSize: number;
+  outlineRowSpacing: number;
   onSelectOutlineItem?: (item: OutlineItem) => void;
 }
 
@@ -49,9 +51,12 @@ export function SideBar({
   displayFileName,
   displayWorkspacePath,
   outlineItems,
+  outlineFontSize,
+  outlineRowSpacing,
   onSelectOutlineItem,
 }: SideBarProps) {
   const showOutline = panel === 'outline';
+  const outlinePaddingY = Math.max(2, outlineRowSpacing + 2);
 
   return (
     <aside
@@ -67,17 +72,27 @@ export function SideBar({
           </div>
           {outlineItems.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Add Markdown headings to see the document outline.
+              No headings
             </p>
           ) : (
             <ScrollArea className="max-h-[520px] pr-2">
-              <div className="flex flex-col gap-1">
+              <div
+                data-testid="outline-list"
+                className="flex flex-col"
+                style={{ gap: `${outlineRowSpacing}px` }}
+              >
                 {outlineItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    className="flex w-full items-center rounded-md border border-transparent px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    style={{ paddingLeft: `${12 + Math.max(0, item.depth - 1) * 14}px` }}
+                    className="flex w-full items-center rounded-md border border-transparent px-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      fontSize: `${outlineFontSize}px`,
+                      lineHeight: 1.25,
+                      paddingTop: `${outlinePaddingY}px`,
+                      paddingBottom: `${outlinePaddingY}px`,
+                      paddingLeft: `${8 + Math.max(0, item.depth - 1) * 12}px`,
+                    }}
                     disabled={busy}
                     onClick={() => onSelectOutlineItem?.(item)}
                   >

@@ -5,6 +5,8 @@ export interface Settings {
   editorFontSize: number;
   editorFontFamily: string;
   editorLineWrap: boolean;
+  outlineFontSize: number;
+  outlineRowSpacing: number;
   defaultMode: 'Editor' | 'Wysiwyg' | 'SplitView';
   focusModeEnabled: boolean;
   typewriterModeEnabled: boolean;
@@ -19,6 +21,8 @@ export const DEFAULT_SETTINGS: Settings = {
   editorFontSize: 14,
   editorFontFamily: '',
   editorLineWrap: true,
+  outlineFontSize: 13,
+  outlineRowSpacing: 2,
   defaultMode: 'Wysiwyg',
   focusModeEnabled: false,
   typewriterModeEnabled: false,
@@ -28,11 +32,39 @@ export const DEFAULT_SETTINGS: Settings = {
   diagnosticsEnabled: false,
 };
 
+export const OUTLINE_FONT_SIZE_MIN = 10;
+export const OUTLINE_FONT_SIZE_MAX = 18;
+export const OUTLINE_ROW_SPACING_MIN = 0;
+export const OUTLINE_ROW_SPACING_MAX = 8;
+
+function normalizeBoundedInteger(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
 function normalizeSettings(value: Partial<Settings> | null | undefined): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...(value ?? {}) };
   if (!Number.isFinite(merged.editorFontSize) || merged.editorFontSize <= 0) {
     merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
   }
+  merged.outlineFontSize = normalizeBoundedInteger(
+    merged.outlineFontSize,
+    DEFAULT_SETTINGS.outlineFontSize,
+    OUTLINE_FONT_SIZE_MIN,
+    OUTLINE_FONT_SIZE_MAX,
+  );
+  merged.outlineRowSpacing = normalizeBoundedInteger(
+    merged.outlineRowSpacing,
+    DEFAULT_SETTINGS.outlineRowSpacing,
+    OUTLINE_ROW_SPACING_MIN,
+    OUTLINE_ROW_SPACING_MAX,
+  );
   if (typeof merged.editorLineWrap !== 'boolean') {
     merged.editorLineWrap = DEFAULT_SETTINGS.editorLineWrap;
   }
