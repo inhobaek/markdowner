@@ -414,6 +414,21 @@ function matchesShortcut(
   return event.key.toLowerCase() === key && event.shiftKey === (options.shift ?? false);
 }
 
+function countLiteralOccurrencesBefore(source: string, needle: string, endOffset: number) {
+  if (needle.length === 0) {
+    return 0;
+  }
+
+  let count = 0;
+  let index = source.indexOf(needle);
+  while (index >= 0 && index < endOffset) {
+    count += 1;
+    index = source.indexOf(needle, index + needle.length);
+  }
+
+  return count;
+}
+
 function normalizeCloseDecision(decision: unknown) {
   return typeof decision === 'string'
     ? decision.trim().toLowerCase().replace(/[’']/g, "'")
@@ -971,13 +986,25 @@ export default function App() {
     }
 
     const matches = Array.from(localDraft.matchAll(/^(#{1,6})\s+(.+?)\s*#*\s*$/gm));
-    return matches.map((match, index) => ({
-      id: `${index}-${match.index ?? index}`,
-      depth: match[1]?.length ?? 1,
-      title: (match[2] ?? '').trim(),
-      selectionStart: match.index ?? 0,
-      selectionEnd: (match.index ?? 0) + match[0].trimEnd().length,
-    }));
+    return matches.map((match, index) => {
+      const lineStart = match.index ?? 0;
+      const rawTitle = match[2] ?? '';
+      const title = rawTitle.trim();
+      const rawTitleStartInLine = match[0].indexOf(rawTitle);
+      const trimmedPrefixLength = rawTitle.length - rawTitle.trimStart().length;
+      const titleStart =
+        lineStart + Math.max(0, rawTitleStartInLine) + trimmedPrefixLength;
+
+      return {
+        id: `${index}-${lineStart}`,
+        depth: match[1]?.length ?? 1,
+        title,
+        titleStart,
+        titleEnd: titleStart + title.length,
+        selectionStart: lineStart,
+        selectionEnd: lineStart + match[0].trimEnd().length,
+      };
+    });
   }, [activeDocumentOpen, localDraft]);
   const sourceLineStartOffsets = useMemo(() => buildLineStartOffsets(localDraft), [localDraft]);
   const themeMode: ThemeMode = settings.themeFollowSystem ? 'system' : 'manual';
@@ -1043,6 +1070,23 @@ export default function App() {
 
   const handleSelectOutlineItem = useEffectEvent((item: OutlineItem) => {
     if (currentMode === 'Wysiwyg') {
+      const titleText = localDraft.slice(item.titleStart, item.titleEnd) || item.title;
+      const occurrenceIndex = countLiteralOccurrencesBefore(
+        localDraft,
+        titleText,
+        item.titleStart,
+      );
+      const matches = findWysiwygTextMatches(editor, titleText, {
+        caseSensitive: true,
+        wholeWord: false,
+        regex: false,
+      }).matches.filter(isWysiwygFindMatch);
+      const match = matches[occurrenceIndex] ?? matches[0];
+
+      if (match && editor) {
+        selectWysiwygFindMatch(editor, match);
+        editor.view.dispatch(editor.state.tr.scrollIntoView());
+      }
       return;
     }
 
@@ -2563,7 +2607,7 @@ export default function App() {
         return;
       }
 
-      if (matchesShortcut(event, 'b')) {
+      if (matchesShortcut(event, 'b', { shift: true })) {
         event.preventDefault();
         handleToggleSidebar();
         return;

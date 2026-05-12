@@ -493,7 +493,7 @@ describe('App recent documents', () => {
 
     expect(toolbar).toHaveAttribute('aria-orientation', 'vertical');
     expect(
-      within(toolbar).getByRole('button', { name: /^explorer \(cmd\+b\)$/i }),
+      within(toolbar).getByRole('button', { name: /^explorer \(cmd\+shift\+b\)$/i }),
     ).toBeInTheDocument();
     expect(
       within(toolbar).getByRole('button', { name: /^quick open \(cmd\+p\)$/i }),
@@ -786,6 +786,39 @@ describe('App recent documents', () => {
       expect(sourceEditor).toHaveFocus();
       expect((sourceEditor as HTMLTextAreaElement).selectionStart).toBe(10);
       expect((sourceEditor as HTMLTextAreaElement).selectionEnd).toBe(22);
+    });
+  });
+
+  it('moves focus to the matching heading when selecting an Outline item in WYSIWYG mode', async () => {
+    const editor = createMockTiptapEditor('# Agenda\n\n## Decisions\nNotes', [
+      { text: 'Agenda', from: 1 },
+      { text: 'Decisions', from: 10 },
+      { text: 'Notes', from: 21 },
+    ]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'meeting-notes.md',
+        activeDocumentPath: '/tmp/project/meeting-notes.md',
+        activeDocumentSource: ['# Agenda', '', '## Decisions', 'Notes'].join('\n'),
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByTestId('mock-tiptap-editor');
+
+    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^decisions$/i }));
+
+    await waitFor(() => {
+      expect(editor.commands.setTextSelection).toHaveBeenLastCalledWith({ from: 10, to: 19 });
+      expect(editor.state.tr.scrollIntoView).toHaveBeenCalled();
+      expect(editor.view.dispatch).toHaveBeenCalledWith(editor.state.tr);
+      expect(editor.view.focus).toHaveBeenCalled();
     });
   });
 
@@ -1574,7 +1607,7 @@ describe('App recent documents', () => {
     const view = render(<App />);
 
     const explorerButton = await waitFor(() =>
-      within(view.container).getByRole('button', { name: /^explorer \(cmd\+b\)$/i }),
+      within(view.container).getByRole('button', { name: /^explorer \(cmd\+shift\+b\)$/i }),
     );
     const quickOpenButton = within(view.container).getByRole('button', {
       name: /^quick open \(cmd\+p\)$/i,
@@ -1583,7 +1616,7 @@ describe('App recent documents', () => {
       name: /^settings \(cmd\+,\)$/i,
     });
 
-    expect(explorerButton).toHaveAttribute('aria-keyshortcuts', 'Meta+B Control+B');
+    expect(explorerButton).toHaveAttribute('aria-keyshortcuts', 'Meta+Shift+B Control+Shift+B');
     expect(quickOpenButton).toHaveAttribute('aria-keyshortcuts', 'Meta+P Control+P');
     expect(settingsButton).toHaveAttribute('aria-keyshortcuts', 'Meta+, Control+,');
   });
@@ -3016,6 +3049,57 @@ describe('App recent documents', () => {
     });
   });
 
+  it('leaves Cmd+B available for bold instead of toggling the sidebar', async () => {
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const explorerButton = await screen.findByRole('button', { name: /^explorer/i });
+
+    expect(explorerButton).toHaveAttribute('title', 'Explorer (Cmd+Shift+B)');
+    expect(explorerButton).toHaveAttribute('aria-keyshortcuts', 'Meta+Shift+B Control+Shift+B');
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'b',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(explorerButton).toHaveAttribute('aria-pressed', 'false');
+    expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBeNull();
+  });
+
+  it('toggles the sidebar with Cmd+Shift+B', async () => {
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    const explorerButton = await screen.findByRole('button', { name: /^explorer/i });
+    const event = new KeyboardEvent('keydown', {
+      key: 'b',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(explorerButton).toHaveAttribute('aria-pressed', 'true');
+      expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBe('true');
+    });
+  });
+
   it('announces tab changes with RTL-capable text direction', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({
@@ -3613,6 +3697,40 @@ describe('App recent documents', () => {
     expect(fontFamilyInput).toHaveClass('w-full', 'min-w-0');
     expect(defaultModeToggle).toHaveClass('h-auto', 'w-full', 'flex-wrap');
     expect(pdfPaperSizeToggle).toHaveClass('h-auto', 'w-full', 'flex-wrap');
+  });
+
+  it('keeps the Settings reset action fixed at the bottom of the panel', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'load_settings') {
+        return {
+          autoSave: false,
+          editorFontSize: 14,
+          editorFontFamily: '',
+          editorLineWrap: true,
+          defaultMode: 'Wysiwyg',
+          assetFolder: 'assets',
+          pdfPaperSize: 'A4',
+        };
+      }
+      return undefined;
+    });
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+
+    const panel = await screen.findByTestId('settings-panel');
+    const body = within(panel).getByTestId('settings-panel-body');
+    const resetFooter = within(panel).getByTestId('settings-reset-footer');
+    const resetButton = within(resetFooter).getByRole('button', {
+      name: /reset to defaults/i,
+    });
+
+    expect(body).toHaveClass('flex-1', 'overflow-y-auto');
+    expect(resetFooter).toHaveClass('sticky', 'bottom-0', 'shrink-0');
+    expect(resetButton).toBeInTheDocument();
   });
 
   it('applies the persisted editor font size to the source pane on startup', async () => {

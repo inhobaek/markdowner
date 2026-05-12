@@ -40,9 +40,9 @@ export function ActivityBar({
           size="icon"
           className={cn('w-8 h-8 rounded-md', isSidebarOpen ? activeClass : inactiveClass)}
           onClick={onToggleSidebar}
-          title="Explorer (Cmd+B)"
-          aria-label="Explorer (Cmd+B)"
-          aria-keyshortcuts="Meta+B Control+B"
+          title="Explorer (Cmd+Shift+B)"
+          aria-label="Explorer (Cmd+Shift+B)"
+          aria-keyshortcuts="Meta+Shift+B Control+Shift+B"
           aria-pressed={Boolean(isSidebarOpen)}
         >
           <Files className="w-5 h-5" />

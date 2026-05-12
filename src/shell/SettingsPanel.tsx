@@ -69,7 +69,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
       </header>
       <div
         data-testid="settings-panel-body"
-        className="mx-auto grid w-full max-w-2xl gap-4 overflow-y-auto px-6 py-6"
+        className="mx-auto grid w-full max-w-2xl flex-1 gap-4 overflow-y-auto px-6 py-6"
       >
         <div className="grid gap-2">
           <h4 className="text-sm font-medium leading-none">CLI Launcher</h4>
@@ -306,7 +306,10 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
           </div>
         </div>
       </div>
-      <footer className="shrink-0 border-t border-border bg-muted/50 px-6 py-3">
+      <footer
+        data-testid="settings-reset-footer"
+        className="sticky bottom-0 z-10 shrink-0 border-t border-border bg-muted/95 px-6 py-3 backdrop-blur"
+      >
         <div className="mx-auto flex w-full max-w-2xl justify-end">
           <Button
             variant="outline"

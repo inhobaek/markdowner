@@ -10,6 +10,8 @@ export interface OutlineItem {
   id: string;
   title: string;
   depth: number;
+  titleStart: number;
+  titleEnd: number;
   selectionStart: number;
   selectionEnd: number;
 }
