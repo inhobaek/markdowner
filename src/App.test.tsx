@@ -784,8 +784,8 @@ describe('App recent documents', () => {
 
     await waitFor(() => {
       expect(sourceEditor).toHaveFocus();
-      expect((sourceEditor as HTMLTextAreaElement).selectionStart).toBe(10);
-      expect((sourceEditor as HTMLTextAreaElement).selectionEnd).toBe(22);
+      expect((sourceEditor as HTMLTextAreaElement).selectionStart).toBe(13);
+      expect((sourceEditor as HTMLTextAreaElement).selectionEnd).toBe(13);
     });
   });
 
@@ -815,7 +815,7 @@ describe('App recent documents', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^decisions$/i }));
 
     await waitFor(() => {
-      expect(editor.commands.setTextSelection).toHaveBeenLastCalledWith({ from: 10, to: 19 });
+      expect(editor.commands.setTextSelection).toHaveBeenLastCalledWith({ from: 10, to: 10 });
       expect(editor.state.tr.scrollIntoView).toHaveBeenCalled();
       expect(editor.view.dispatch).toHaveBeenCalledWith(editor.state.tr);
       expect(editor.view.focus).toHaveBeenCalled();

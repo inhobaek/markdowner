@@ -1197,13 +1197,19 @@ export default function App() {
       const match = matches[occurrenceIndex] ?? matches[0];
 
       if (match && editor) {
-        selectWysiwygFindMatch(editor, match);
+        const didSelect = editor.commands?.setTextSelection?.({
+          from: match.wysiwygFrom,
+          to: match.wysiwygFrom,
+        });
+        if (didSelect !== false) {
+          editor.view?.focus?.();
+        }
         editor.view.dispatch(editor.state.tr.scrollIntoView());
       }
       return;
     }
 
-    focusSourceSelection(item.selectionStart, item.selectionEnd);
+    focusSourceSelection(item.titleStart);
   });
 
   const handleSplitSourceScroll = (event: ReactUIEvent<HTMLDivElement>) => {
