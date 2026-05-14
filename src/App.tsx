@@ -42,6 +42,8 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { SelectionToolbar } from '@/components/wysiwyg/SelectionToolbar';
+import { SlashCommandMenu } from '@/components/wysiwyg/SlashCommandMenu';
 import { cn } from '@/lib/utils';
 import { ActivityBar } from '@/shell/ActivityBar';
 import { AppMenu } from '@/shell/AppMenu';
@@ -3633,7 +3635,13 @@ export default function App() {
         onSplitSourceScroll={handleSplitSourceScroll}
         onSplitPreviewScroll={handleSplitPreviewScroll}
         onSplitPreviewClick={handleSplitPreviewClick}
-        editorContent={<EditorContent editor={editor} />}
+        editorContent={
+          <>
+            <EditorContent editor={editor} />
+            <SlashCommandMenu editor={editor} enabled={currentMode === 'Wysiwyg'} />
+            <SelectionToolbar editor={editor} enabled={currentMode === 'Wysiwyg'} />
+          </>
+        }
         sourceEditor={
           <div ref={sourceEditorContainerRef} className="h-full min-h-0">
             <CodeMirror
