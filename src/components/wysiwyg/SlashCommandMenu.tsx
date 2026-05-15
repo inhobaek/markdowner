@@ -214,20 +214,20 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       const $from = state.selection.$from;
       const blockStart = $from.start($from.depth);
       const textBefore = state.doc.textBetween(blockStart, from, '\n', ' ');
-      // Match `/foo` either at the very start of the block or right after a
-      // whitespace character. The slash itself must not have whitespace before
-      // it in the same chunk.
-      const match = textBefore.match(/(?:^|\s)(\/)([^\s/]*)$/);
+      // Match slash commands only at the start of a block (allowing leading
+      // indentation). API routes such as "DELETE /api/..." commonly contain
+      // slashes after ordinary text and must remain plain document content.
+      const match = textBefore.match(/^(\s*)\/([^\s/]*)$/);
       if (!match) {
         setMenu({ open: false });
         return;
       }
 
       const query = match[2] ?? '';
-      const slashOffset = match[0].length - query.length - 1;
-      const matchStart = from - query.length - 1;
+      const leadingWhitespace = match[1]?.length ?? 0;
+      const matchStart = blockStart + leadingWhitespace;
       // Sanity: matchStart must point at the slash character.
-      if (matchStart < blockStart || matchStart + slashOffset < 0) {
+      if (matchStart < blockStart || textBefore[leadingWhitespace] !== '/') {
         setMenu({ open: false });
         return;
       }

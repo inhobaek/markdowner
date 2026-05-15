@@ -41,6 +41,20 @@ function createSlashEditor() {
   return editor;
 }
 
+function setSlashTextBefore(editor: any, textBefore: string) {
+  const from = 1 + textBefore.length;
+  editor.state.selection = {
+    from,
+    to: from,
+    empty: true,
+    $from: {
+      depth: 1,
+      start: () => 1,
+    },
+  };
+  editor.state.doc.textBetween = () => textBefore;
+}
+
 describe('SlashCommandMenu', () => {
   const scrollCalls: Array<{ text: string; options: ScrollIntoViewOptions | boolean | undefined }> =
     [];
@@ -92,5 +106,20 @@ describe('SlashCommandMenu', () => {
     const lastScrollCall = scrollCalls[scrollCalls.length - 1];
     expect(lastScrollCall?.text).toMatch(/table/i);
     expect(lastScrollCall?.options).toEqual({ block: 'nearest' });
+  });
+
+  it('does not open for API route slashes after an HTTP method', async () => {
+    const editor = createSlashEditor();
+    setSlashTextBefore(editor, 'DELETE /api');
+
+    render(<SlashCommandMenu editor={editor} />);
+
+    act(() => {
+      editor.emit('update');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('menu', { name: /insert block/i })).not.toBeInTheDocument();
+    });
   });
 });
