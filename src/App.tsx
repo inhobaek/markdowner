@@ -1219,6 +1219,20 @@ export default function App() {
     }
   });
 
+  const handleToggleSidebar = useEffectEvent(() => {
+    if (isSidebarOpen) {
+      setIsSidebarOpen(false);
+      writeSidebarState(false);
+      announceShell('Sidebar hidden');
+      return;
+    }
+
+    setSidebarPanel('files');
+    setIsSidebarOpen(true);
+    writeSidebarState(true);
+    announceShell('Files sidebar shown');
+  });
+
   /**
    * Move keyboard focus into the Explorer sidebar (VS Code "Show Explorer"
    * parity). Restores the last focused row when available so toggling Cmd+0
@@ -1330,10 +1344,11 @@ export default function App() {
   };
 
   const handleOpenOutlinePanel = useEffectEvent(() => {
+    const next = !(isSidebarOpen && sidebarPanel === 'outline');
     setSidebarPanel('outline');
-    setIsSidebarOpen(true);
-    writeSidebarState(true);
-    announceShell('Outline sidebar shown');
+    setIsSidebarOpen(next);
+    writeSidebarState(next);
+    announceShell(next ? 'Outline sidebar shown' : 'Sidebar hidden');
   });
 
   const handleToggleSearchPanel = useEffectEvent(() => {
@@ -3079,6 +3094,12 @@ export default function App() {
         return;
       }
 
+      if (matchesShortcut(event, 'b', { shift: true })) {
+        event.preventDefault();
+        handleToggleSidebar();
+        return;
+      }
+
       if (matchesShortcut(event, ',')) {
         event.preventDefault();
         void toggleSettingsTab();
@@ -3105,6 +3126,12 @@ export default function App() {
       if (matchesShortcut(event, 'f', { shift: true })) {
         event.preventDefault();
         handleFocusSearchPanel();
+        return;
+      }
+
+      if (matchesShortcut(event, 'd', { shift: true })) {
+        event.preventDefault();
+        handleOpenOutlinePanel();
         return;
       }
 
@@ -3647,9 +3674,26 @@ export default function App() {
     {
       id: 'view.toggleSidebar',
       category: 'View',
+      label: 'Toggle Sidebar',
+      shortcut: '⌘⇧B',
+      run: () => handleToggleSidebar(),
+    },
+    {
+      id: 'view.showExplorer',
+      category: 'View',
       label: 'Show Explorer',
       shortcut: '⌘⇧E',
-      run: () => handleShowExplorerPanel(),
+      run: () => {
+        handleShowExplorerPanel();
+        focusExplorerTree();
+      },
+    },
+    {
+      id: 'view.toggleOutline',
+      category: 'View',
+      label: 'Toggle Outline',
+      shortcut: '⌘⇧D',
+      run: () => handleOpenOutlinePanel(),
     },
     {
       id: 'view.quickOpen',

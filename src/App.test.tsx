@@ -499,7 +499,7 @@ describe('App recent documents', () => {
       within(toolbar).getByRole('button', { name: /^search \(cmd\+shift\+f\)$/i }),
     ).toBeInTheDocument();
     expect(
-      within(toolbar).getByRole('button', { name: /^outline$/i }),
+      within(toolbar).getByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i }),
     ).toBeInTheDocument();
     expect(
       within(toolbar).getByRole('button', { name: /^settings \(cmd\+,\)$/i }),
@@ -629,7 +629,7 @@ describe('App recent documents', () => {
         expect(screen.queryByTestId('settings-panel')).toBeNull();
       });
 
-      fireEvent.click(screen.getByRole('button', { name: /^outline$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i }));
       const agendaHeading = await screen.findByRole('button', { name: /^agenda$/i });
       fireEvent.click(agendaHeading);
 
@@ -691,7 +691,7 @@ describe('App recent documents', () => {
 
     render(<App />);
 
-    const outlineButton = await screen.findByRole('button', { name: /^outline$/i });
+    const outlineButton = await screen.findByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i });
     expect(outlineButton).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(outlineButton);
@@ -700,10 +700,48 @@ describe('App recent documents', () => {
       expect(outlineButton).toHaveAttribute('aria-pressed', 'true');
     });
 
-    expect(screen.getByText(/^outline$/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/^outline$/i).some((node) =>
+        node.classList.contains('explorer-section-header'),
+      ),
+    ).toBe(true);
     expect(screen.getByRole('button', { name: /^agenda$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^decisions$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^follow-up$/i })).toBeInTheDocument();
+  });
+
+  it('renders Search and Outline panels with the Explorer sidebar density', async () => {
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        rootDir: '/tmp/project',
+        workspaceDocuments: ['/tmp/project/README.md'],
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: ['# Agenda', '', '## Decisions'].join('\n'),
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /search \(cmd\+shift\+f\)/i }));
+    const searchPanel = await screen.findByTestId('sidebar-search-panel');
+    expect(searchPanel.closest('aside')).toHaveClass('explorer-sidebar');
+    expect(within(searchPanel).getByText(/^search$/i)).toHaveClass('explorer-section-header');
+    expect(within(searchPanel).getByTestId('sidebar-search-input')).toHaveClass('h-7');
+
+    fireEvent.click(screen.getByRole('button', { name: /outline \(cmd\+shift\+d\)/i }));
+    const outline = await screen.findByRole('complementary', { name: /outline/i });
+    expect(outline).toHaveClass('explorer-sidebar');
+    expect(
+      within(outline).getAllByText(/^outline$/i).some((node) =>
+        node.classList.contains('explorer-section-header'),
+      ),
+    ).toBe(true);
+    expect(within(outline).getByRole('button', { name: /^agenda$/i })).toHaveClass(
+      'explorer-tree-row',
+    );
   });
 
   it('renders a terse Outline empty state without marketing copy', async () => {
@@ -720,7 +758,7 @@ describe('App recent documents', () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i }));
 
     expect(await screen.findByText(/^no headings$/i)).toBeInTheDocument();
     expect(
@@ -751,7 +789,7 @@ describe('App recent documents', () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i }));
 
     const agenda = await screen.findByRole('button', { name: /^agenda$/i });
     const outlineList = screen.getByTestId('outline-list');
@@ -777,7 +815,7 @@ describe('App recent documents', () => {
     render(<App />);
 
     const sourceEditor = await screen.findByLabelText('Source editor');
-    const outlineButton = screen.getByRole('button', { name: /^outline$/i });
+    const outlineButton = screen.getByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i });
 
     fireEvent.click(outlineButton);
     fireEvent.click(await screen.findByRole('button', { name: /^decisions$/i }));
@@ -811,7 +849,7 @@ describe('App recent documents', () => {
 
     await screen.findByTestId('mock-tiptap-editor');
 
-    fireEvent.click(await screen.findByRole('button', { name: /^outline$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^outline \(cmd\+shift\+d\)$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /^decisions$/i }));
 
     await waitFor(() => {
@@ -3244,6 +3282,64 @@ describe('App recent documents', () => {
     expect(settingsButton).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('toggles the sidebar with Cmd+Shift+B', async () => {
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByText(/Start your next document/);
+
+    fireEvent.keyDown(window, { key: 'B', metaKey: true, shiftKey: true });
+
+    const explorer = await screen.findByRole('complementary', { name: /explorer/i });
+    await waitFor(() => {
+      expect(explorer).not.toHaveClass('invisible');
+      expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBe('true');
+    });
+
+    fireEvent.keyDown(window, { key: 'B', metaKey: true, shiftKey: true });
+
+    await waitFor(() => {
+      expect(explorer).toHaveClass('invisible');
+      expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBe('false');
+    });
+  });
+
+  it('toggles the Outline panel with Cmd+Shift+D', async () => {
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'notes.md',
+        activeDocumentPath: '/tmp/project/notes.md',
+        activeDocumentSource: ['# Agenda', '', '## Decisions'].join('\n'),
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByRole('tab', { name: /notes\.md/i });
+
+    fireEvent.keyDown(window, { key: 'D', metaKey: true, shiftKey: true });
+
+    const outline = await screen.findByRole('complementary', { name: /outline/i });
+    await waitFor(() => {
+      expect(outline).not.toHaveClass('invisible');
+      expect(within(outline).getByRole('button', { name: /^agenda$/i })).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: 'D', metaKey: true, shiftKey: true });
+
+    await waitFor(() => {
+      expect(outline).toHaveClass('invisible');
+      expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBe('false');
+    });
+  });
+
   it('marks the Activity Bar Settings button as pressed while the Settings dialog is open', async () => {
     bootstrapMock.mockResolvedValue(baseSnapshot());
 
@@ -3324,6 +3420,50 @@ describe('App recent documents', () => {
     });
 
     expect(screen.queryByRole('dialog', { name: /command palette/i })).toBeNull();
+  });
+
+  it('runs Toggle Sidebar from the Command Palette', async () => {
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'P', metaKey: true, shiftKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /command palette/i });
+    const input = within(dialog).getByRole('textbox', { name: /command palette search/i });
+
+    fireEvent.change(input, { target: { value: 'toggle sidebar' } });
+
+    const option = await within(dialog).findByRole('option', {
+      name: /toggle sidebar/i,
+    });
+    fireEvent.click(option);
+
+    const explorer = await screen.findByRole('complementary', { name: /explorer/i });
+    await waitFor(() => {
+      expect(explorer).not.toHaveClass('invisible');
+      expect(window.localStorage.getItem('markdowner.sidebarOpen')).toBe('true');
+    });
+  });
+
+  it('lists the sidebar and outline toggles in keyboard shortcuts help', async () => {
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: '/', metaKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /keyboard shortcuts/i });
+
+    expect(within(dialog).getByText('Toggle Sidebar')).toBeInTheDocument();
+    expect(within(dialog).getByText('Toggle Outline')).toBeInTheDocument();
+    expect(within(dialog).getByText('⌘⇧B')).toBeInTheDocument();
+    expect(within(dialog).getByText('⌘⇧D')).toBeInTheDocument();
   });
 
   it('announces mode changes through a hidden polite live region', async () => {

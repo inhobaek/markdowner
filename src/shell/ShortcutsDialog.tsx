@@ -68,7 +68,9 @@ const SECTIONS: ShortcutSection[] = [
   {
     title: 'Sidebar',
     rows: [
+      { keys: '⌘⇧B', label: 'Toggle Sidebar' },
       { keys: '⌘⇧E', label: 'Show Explorer panel' },
+      { keys: '⌘⇧D', label: 'Toggle Outline' },
     ],
   },
 ];

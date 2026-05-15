@@ -63,8 +63,9 @@ export function ActivityBar({
           variant="ghost"
           size="icon"
           className={cn('w-8 h-8 rounded-md', isOutlineOpen ? activeClass : inactiveClass)}
-          title="Outline"
-          aria-label="Outline"
+          title="Outline (Cmd+Shift+D)"
+          aria-label="Outline (Cmd+Shift+D)"
+          aria-keyshortcuts="Meta+Shift+D Control+Shift+D"
           aria-pressed={Boolean(isOutlineOpen)}
           onClick={onOpenOutline}
         >
