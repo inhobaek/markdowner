@@ -43,6 +43,9 @@ const CLI_LAUNCHER_DEFAULT_EXECUTABLE: &str =
 const CLI_LAUNCHER_BEGIN_MARKER: &str = "# >>> markdowner CLI launcher >>>";
 const CLI_LAUNCHER_END_MARKER: &str = "# <<< markdowner CLI launcher <<<";
 
+const CLI_BINARY_INSTALL_PATH: &str = "/usr/local/bin/mdner";
+const CLI_BINARY_SCRIPT_TAG: &str = "# markdowner-cli-wrapper";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MenuCommandDescriptor {
     id: &'static str,
@@ -56,6 +59,24 @@ struct CliLauncherInstallResult {
     shell_config_path: String,
     alias_command: String,
     already_installed: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliBinaryStatus {
+    install_path: String,
+    target_executable: String,
+    installed: bool,
+    in_path: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliBinaryActionResult {
+    install_path: String,
+    target_executable: String,
+    /// True when install/uninstall was a no-op (already-in-target-state).
+    already_done: bool,
 }
 
 const FILE_MENU_COMMANDS: &[MenuCommandDescriptor] = &[
@@ -721,6 +742,249 @@ fn install_cli_launcher() -> Result<CliLauncherInstallResult, String> {
     install_cli_launcher_alias(&shell_config_path, &alias_command)
 }
 
+fn cli_binary_wrapper_script_for_target(target_executable: &Path) -> String {
+    // A tiny POSIX wrapper that forwards all arguments to the app's CLI
+    // binary. The tag comment lets uninstall recognise scripts we own and
+    // avoid clobbering an unrelated /usr/local/bin/mdner that the user (or
+    // a package manager) might have placed there.
+    format!(
+        "#!/bin/sh\n{tag}\nexec \"{target}\" \"$@\"\n",
+        tag = CLI_BINARY_SCRIPT_TAG,
+        target = double_quote_shell_value(&target_executable.to_string_lossy()),
+    )
+}
+
+fn cli_binary_directory_is_in_path(install_path: &Path) -> bool {
+    let Some(parent) = install_path.parent() else {
+        return false;
+    };
+    let parent_str = parent.to_string_lossy();
+    env::var_os("PATH")
+        .map(|raw| {
+            env::split_paths(&raw).any(|candidate| {
+                candidate.to_string_lossy() == parent_str
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn cli_binary_install_is_ours(install_path: &Path) -> bool {
+    match std::fs::read_to_string(install_path) {
+        Ok(contents) => contents.contains(CLI_BINARY_SCRIPT_TAG),
+        Err(_) => false,
+    }
+}
+
+/// Escape a string so it can be embedded inside an AppleScript double-quoted
+/// string literal. AppleScript treats `"` and `\` specially.
+#[cfg(target_os = "macos")]
+fn apple_script_string_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "macos")]
+fn run_privileged_shell_command(shell_command: &str) -> Result<(), String> {
+    let prompt = "Markdowner needs administrator access to update /usr/local/bin.";
+    let osa_script = format!(
+        r#"do shell script "{}" with prompt "{}" with administrator privileges"#,
+        apple_script_string_escape(shell_command),
+        apple_script_string_escape(prompt),
+    );
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&osa_script)
+        .output()
+        .map_err(|error| format!("Could not spawn osascript: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.contains("User canceled") || stderr.contains("(-128)") {
+        Err("Cancelled".to_string())
+    } else if stderr.is_empty() {
+        Err("Admin escalation failed".to_string())
+    } else {
+        Err(stderr)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_privileged_shell_command(_shell_command: &str) -> Result<(), String> {
+    Err("Admin escalation is only supported on macOS in this build".to_string())
+}
+
+fn write_cli_binary_script(install_path: &Path, script: &str) -> Result<(), String> {
+    if let Some(parent) = install_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("Could not create {}: {error}", parent.display())
+        })?;
+    }
+    std::fs::write(install_path, script).map_err(|error| error.to_string())?;
+    set_executable_permission(install_path).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_executable_permission(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path)?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(path, perms)
+}
+
+#[cfg(not(unix))]
+fn set_executable_permission(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+fn install_cli_binary_at(
+    install_path: &Path,
+    target_executable: &Path,
+) -> Result<CliBinaryActionResult, String> {
+    let script = cli_binary_wrapper_script_for_target(target_executable);
+
+    // No-op if an identical wrapper already exists.
+    if let Ok(existing) = std::fs::read_to_string(install_path)
+        && existing == script
+    {
+        return Ok(CliBinaryActionResult {
+            install_path: install_path.display().to_string(),
+            target_executable: target_executable.display().to_string(),
+            already_done: true,
+        });
+    }
+
+    // Try a plain write first — works when /usr/local/bin/ is user-writable
+    // (e.g. dev machines with a chowned prefix). If that fails, escalate.
+    let direct_result = write_cli_binary_script(install_path, &script);
+    if direct_result.is_ok() {
+        return Ok(CliBinaryActionResult {
+            install_path: install_path.display().to_string(),
+            target_executable: target_executable.display().to_string(),
+            already_done: false,
+        });
+    }
+
+    // Escalation path: write to a temp file, then sudo-move + chmod via
+    // osascript so the user only sees one password prompt.
+    let mut tmp_path = env::temp_dir();
+    tmp_path.push(format!(
+        "markdowner-cli-wrapper-{}-{}.sh",
+        std::process::id(),
+        chrono_nanos_or_zero(),
+    ));
+    std::fs::write(&tmp_path, &script).map_err(|error| {
+        format!("Could not stage wrapper script: {error}")
+    })?;
+
+    let parent = install_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
+
+    let shell_command = format!(
+        "mkdir -p {parent} && mv {tmp} {dest} && chmod 755 {dest}",
+        parent = double_quote_shell_value(&parent.to_string_lossy()),
+        tmp = format_args!("\"{}\"", double_quote_shell_value(&tmp_path.to_string_lossy())),
+        dest = format_args!("\"{}\"", double_quote_shell_value(&install_path.to_string_lossy())),
+    );
+
+    let escalation_result = run_privileged_shell_command(&shell_command);
+    // Best-effort cleanup if mv didn't consume the tmp file (e.g. on cancel).
+    let _ = std::fs::remove_file(&tmp_path);
+
+    escalation_result?;
+
+    Ok(CliBinaryActionResult {
+        install_path: install_path.display().to_string(),
+        target_executable: target_executable.display().to_string(),
+        already_done: false,
+    })
+}
+
+fn uninstall_cli_binary_at(
+    install_path: &Path,
+    target_executable: &Path,
+) -> Result<CliBinaryActionResult, String> {
+    if !install_path.exists() {
+        return Ok(CliBinaryActionResult {
+            install_path: install_path.display().to_string(),
+            target_executable: target_executable.display().to_string(),
+            already_done: true,
+        });
+    }
+
+    if !cli_binary_install_is_ours(install_path) {
+        return Err(format!(
+            "{} exists but was not installed by Markdowner. Remove it manually.",
+            install_path.display()
+        ));
+    }
+
+    let direct_result = std::fs::remove_file(install_path);
+    if direct_result.is_ok() {
+        return Ok(CliBinaryActionResult {
+            install_path: install_path.display().to_string(),
+            target_executable: target_executable.display().to_string(),
+            already_done: false,
+        });
+    }
+
+    let shell_command = format!(
+        "rm -f \"{}\"",
+        double_quote_shell_value(&install_path.to_string_lossy())
+    );
+    run_privileged_shell_command(&shell_command)?;
+    Ok(CliBinaryActionResult {
+        install_path: install_path.display().to_string(),
+        target_executable: target_executable.display().to_string(),
+        already_done: false,
+    })
+}
+
+/// Best-effort nanosecond stamp for temp-file uniqueness. We avoid bringing in
+/// the `chrono` crate just for this.
+fn chrono_nanos_or_zero() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+fn cli_binary_status() -> Result<CliBinaryStatus, String> {
+    let install_path = PathBuf::from(CLI_BINARY_INSTALL_PATH);
+    let target = cli_launcher_executable_path();
+    Ok(CliBinaryStatus {
+        installed: install_path.exists() && cli_binary_install_is_ours(&install_path),
+        in_path: cli_binary_directory_is_in_path(&install_path),
+        install_path: install_path.display().to_string(),
+        target_executable: target.display().to_string(),
+    })
+}
+
+#[tauri::command]
+fn install_cli_binary() -> Result<CliBinaryActionResult, String> {
+    let install_path = PathBuf::from(CLI_BINARY_INSTALL_PATH);
+    let target = cli_launcher_executable_path();
+    install_cli_binary_at(&install_path, &target)
+}
+
+#[tauri::command]
+fn uninstall_cli_binary() -> Result<CliBinaryActionResult, String> {
+    let install_path = PathBuf::from(CLI_BINARY_INSTALL_PATH);
+    let target = cli_launcher_executable_path();
+    uninstall_cli_binary_at(&install_path, &target)
+}
+
 fn load_desktop_settings(
     app_handle: &AppHandle,
 ) -> Result<markdowner_core::settings::Settings, String> {
@@ -1234,6 +1498,9 @@ pub fn run() {
             load_settings,
             save_settings,
             install_cli_launcher,
+            cli_binary_status,
+            install_cli_binary,
+            uninstall_cli_binary,
             search_workspace,
             diagnostics_status,
             record_diagnostics_event,
@@ -1254,13 +1521,15 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DesktopBackend, FILE_MENU_COMMANDS, MENU_COMMAND_CLOSE_WINDOW, MENU_COMMAND_NEW_DOCUMENT,
-        MENU_COMMAND_OPEN_DOCUMENT, MENU_COMMAND_OPEN_WORKSPACE, MENU_COMMAND_QUIT_APP,
-        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT, MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS,
-        MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_FILE_TITLE, MENU_VIEW_TITLE, TopLevelMenuSection,
-        VIEW_MENU_COMMANDS, cli_launcher_alias_command_for_path, install_cli_launcher_alias,
+        CLI_BINARY_SCRIPT_TAG, DesktopBackend, FILE_MENU_COMMANDS, MENU_COMMAND_CLOSE_WINDOW,
+        MENU_COMMAND_NEW_DOCUMENT, MENU_COMMAND_OPEN_DOCUMENT, MENU_COMMAND_OPEN_WORKSPACE,
+        MENU_COMMAND_QUIT_APP, MENU_COMMAND_SAVE_ACTIVE_DOCUMENT,
+        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS, MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_FILE_TITLE,
+        MENU_VIEW_TITLE, TopLevelMenuSection, VIEW_MENU_COMMANDS,
+        cli_binary_install_is_ours, cli_binary_wrapper_script_for_target,
+        cli_launcher_alias_command_for_path, install_cli_binary_at, install_cli_launcher_alias,
         menu_command_from_id, open_startup_path, resolve_cli_path, shell_config_path_for_shell,
-        top_level_menu_sections,
+        top_level_menu_sections, uninstall_cli_binary_at,
     };
 
     #[test]
@@ -1358,6 +1627,89 @@ mod tests {
         assert!(result.already_installed);
         let contents = fs::read_to_string(&shell_config_path).unwrap();
         assert_eq!(contents.matches(alias_command).count(), 1);
+    }
+
+    #[test]
+    fn cli_binary_wrapper_script_execs_the_target_executable() {
+        let script = cli_binary_wrapper_script_for_target(Path::new(
+            "/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop",
+        ));
+
+        assert!(script.starts_with("#!/bin/sh\n"));
+        assert!(script.contains(CLI_BINARY_SCRIPT_TAG));
+        assert!(script.contains(
+            "exec \"/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop\" \"$@\""
+        ));
+    }
+
+    #[test]
+    fn install_cli_binary_writes_wrapper_at_install_path() {
+        let temp = tempdir().unwrap();
+        let install_path = temp.path().join("mdner");
+        let target = Path::new("/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop");
+
+        let result = install_cli_binary_at(&install_path, target).unwrap();
+
+        assert!(!result.already_done);
+        assert_eq!(result.install_path, install_path.display().to_string());
+        let contents = fs::read_to_string(&install_path).unwrap();
+        assert!(contents.contains(CLI_BINARY_SCRIPT_TAG));
+        assert!(contents.contains("markdowner-desktop"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::metadata(&install_path).unwrap().permissions();
+            assert_eq!(perms.mode() & 0o777, 0o755);
+        }
+    }
+
+    #[test]
+    fn install_cli_binary_is_idempotent_when_script_unchanged() {
+        let temp = tempdir().unwrap();
+        let install_path = temp.path().join("mdner");
+        let target = Path::new("/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop");
+
+        install_cli_binary_at(&install_path, target).unwrap();
+        let result = install_cli_binary_at(&install_path, target).unwrap();
+
+        assert!(result.already_done);
+    }
+
+    #[test]
+    fn uninstall_cli_binary_removes_wrapper_owned_by_markdowner() {
+        let temp = tempdir().unwrap();
+        let install_path = temp.path().join("mdner");
+        let target = Path::new("/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop");
+
+        install_cli_binary_at(&install_path, target).unwrap();
+        assert!(cli_binary_install_is_ours(&install_path));
+
+        let result = uninstall_cli_binary_at(&install_path, target).unwrap();
+        assert!(!result.already_done);
+        assert!(!install_path.exists());
+    }
+
+    #[test]
+    fn uninstall_cli_binary_refuses_to_remove_foreign_files() {
+        let temp = tempdir().unwrap();
+        let install_path = temp.path().join("mdner");
+        fs::write(&install_path, "#!/bin/sh\necho hello\n").unwrap();
+        let target = Path::new("/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop");
+
+        let err = uninstall_cli_binary_at(&install_path, target).unwrap_err();
+        assert!(err.contains("not installed by Markdowner"));
+        assert!(install_path.exists());
+    }
+
+    #[test]
+    fn uninstall_cli_binary_no_op_when_path_absent() {
+        let temp = tempdir().unwrap();
+        let install_path = temp.path().join("mdner-missing");
+        let target = Path::new("/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop");
+
+        let result = uninstall_cli_binary_at(&install_path, target).unwrap();
+        assert!(result.already_done);
     }
 
     #[test]

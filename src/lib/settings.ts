@@ -27,6 +27,21 @@ export interface CliLauncherInstallResult {
   alreadyInstalled: boolean;
 }
 
+export interface CliBinaryStatus {
+  installPath: string;
+  targetExecutable: string;
+  installed: boolean;
+  inPath: boolean;
+}
+
+export interface CliBinaryActionResult {
+  installPath: string;
+  targetExecutable: string;
+  alreadyDone: boolean;
+}
+
+export const CLI_BINARY_INSTALL_PATH = '/usr/local/bin/mdner';
+
 export const CLI_ALIAS_COMMAND =
   'alias markdowner="/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop"';
 
@@ -115,6 +130,45 @@ export async function installCliLauncher(): Promise<CliLauncherInstallResult> {
     console.error('Failed to install CLI launcher:', error);
     throw error;
   }
+}
+
+export const DEFAULT_CLI_BINARY_STATUS: CliBinaryStatus = {
+  installPath: CLI_BINARY_INSTALL_PATH,
+  targetExecutable: '',
+  installed: false,
+  inPath: true,
+};
+
+/**
+ * Returns the current CLI binary status from the Rust backend.
+ * When the Tauri command is unavailable (tests, web preview) or returns a
+ * non-object value, returns `null` so the caller can choose to leave their
+ * default state intact rather than triggering a no-op re-render.
+ */
+export async function cliBinaryStatus(): Promise<CliBinaryStatus | null> {
+  try {
+    const result = await invoke<CliBinaryStatus | null | undefined>('cli_binary_status');
+    if (!result || typeof result !== 'object') {
+      return null;
+    }
+    return {
+      installPath: typeof result.installPath === 'string' ? result.installPath : CLI_BINARY_INSTALL_PATH,
+      targetExecutable: typeof result.targetExecutable === 'string' ? result.targetExecutable : '',
+      installed: Boolean(result.installed),
+      inPath: Boolean(result.inPath ?? true),
+    };
+  } catch (error) {
+    console.error('Failed to read CLI binary status:', error);
+    return null;
+  }
+}
+
+export async function installCliBinary(): Promise<CliBinaryActionResult> {
+  return invoke<CliBinaryActionResult>('install_cli_binary');
+}
+
+export async function uninstallCliBinary(): Promise<CliBinaryActionResult> {
+  return invoke<CliBinaryActionResult>('uninstall_cli_binary');
 }
 
 export async function diagnosticsStatus(): Promise<DiagnosticsLogStatus> {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, Copy, Terminal } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Copy, Terminal, Trash2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -8,12 +8,17 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   CLI_ALIAS_COMMAND,
+  CLI_BINARY_INSTALL_PATH,
   DEFAULT_SETTINGS,
   OUTLINE_FONT_SIZE_MAX,
   OUTLINE_FONT_SIZE_MIN,
   OUTLINE_ROW_SPACING_MAX,
   OUTLINE_ROW_SPACING_MIN,
+  cliBinaryStatus,
+  installCliBinary,
   installCliLauncher,
+  uninstallCliBinary,
+  type CliBinaryStatus,
   type Settings,
 } from '@/lib/settings';
 
@@ -40,6 +45,87 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
   const [cliLauncherInstalling, setCliLauncherInstalling] = useState(false);
   const [cliLauncherMessage, setCliLauncherMessage] = useState('');
   const [cliLauncherError, setCliLauncherError] = useState(false);
+
+  const [cliBinary, setCliBinary] = useState<CliBinaryStatus>({
+    installPath: CLI_BINARY_INSTALL_PATH,
+    targetExecutable: '',
+    installed: false,
+    inPath: true,
+  });
+  const [cliBinaryBusy, setCliBinaryBusy] = useState(false);
+  const [cliBinaryMessage, setCliBinaryMessage] = useState('');
+  const [cliBinaryError, setCliBinaryError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    cliBinaryStatus()
+      .then((status) => {
+        // Null means the backend isn't reachable (tests, web preview). Keep
+        // the default state we initialised with — calling setCliBinary anyway
+        // schedules a React update that can race with controlled inputs.
+        if (cancelled || status === null) return;
+        setCliBinary(status);
+      })
+      .catch((error) => {
+        console.error('Failed to read CLI binary status:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshCliBinaryStatus = async () => {
+    try {
+      const status = await cliBinaryStatus();
+      if (status !== null) setCliBinary(status);
+    } catch (error) {
+      console.error('Failed to refresh CLI binary status:', error);
+    }
+  };
+
+  const handleInstallCliBinary = async () => {
+    setCliBinaryBusy(true);
+    setCliBinaryError(false);
+    setCliBinaryMessage('');
+    try {
+      const result = await installCliBinary();
+      setCliBinaryMessage(
+        result.alreadyDone
+          ? `Already installed at ${result.installPath}`
+          : `Installed at ${result.installPath}`,
+      );
+      await refreshCliBinaryStatus();
+    } catch (error) {
+      const text = typeof error === 'string' ? error : (error as Error)?.message ?? '';
+      console.error('Failed to install CLI binary:', error);
+      setCliBinaryError(true);
+      setCliBinaryMessage(text === 'Cancelled' ? 'Cancelled' : `Install failed: ${text || 'unknown error'}`);
+    } finally {
+      setCliBinaryBusy(false);
+    }
+  };
+
+  const handleUninstallCliBinary = async () => {
+    setCliBinaryBusy(true);
+    setCliBinaryError(false);
+    setCliBinaryMessage('');
+    try {
+      const result = await uninstallCliBinary();
+      setCliBinaryMessage(
+        result.alreadyDone
+          ? `Not installed at ${result.installPath}`
+          : `Uninstalled from ${result.installPath}`,
+      );
+      await refreshCliBinaryStatus();
+    } catch (error) {
+      const text = typeof error === 'string' ? error : (error as Error)?.message ?? '';
+      console.error('Failed to uninstall CLI binary:', error);
+      setCliBinaryError(true);
+      setCliBinaryMessage(text === 'Cancelled' ? 'Cancelled' : `Uninstall failed: ${text || 'unknown error'}`);
+    } finally {
+      setCliBinaryBusy(false);
+    }
+  };
 
   const handleSettingChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     onSettingsChange({ ...settings, [key]: value });
@@ -171,6 +257,87 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
             {cliLauncherMessage}
           </p>
         </div>
+
+        <Separator />
+
+        <div data-testid="settings-cli-binary" className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-medium leading-none">CLI Binary (mdner)</h4>
+            <span
+              data-testid="settings-cli-binary-state"
+              className={`rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                cliBinary.installed
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-muted text-muted-foreground'
+              }`}
+            >
+              {cliBinary.installed ? 'Installed' : 'Not installed'}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Install a <code className="font-mono text-xs">mdner</code> command at{' '}
+            <code className="font-mono text-xs">{cliBinary.installPath}</code> so you can run{' '}
+            <code className="font-mono text-xs">mdner README.md</code> or{' '}
+            <code className="font-mono text-xs">mdner project-folder</code> from the terminal.
+            Writing to <code className="font-mono text-xs">/usr/local/bin</code> usually requires an
+            administrator password.
+          </p>
+          <div
+            data-testid="settings-cli-binary-path"
+            className="min-w-0 overflow-hidden rounded bg-muted px-2 py-1.5"
+          >
+            <code className="block min-w-0 whitespace-pre-wrap break-all font-mono text-xs leading-5">
+              {cliBinary.installPath}
+              {cliBinary.targetExecutable ? `  →  ${cliBinary.targetExecutable}` : ''}
+            </code>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleInstallCliBinary}
+              disabled={cliBinaryBusy}
+              aria-label="Install mdner CLI binary"
+              className="flex-1 sm:flex-none"
+            >
+              <Terminal />
+              {cliBinaryBusy
+                ? cliBinary.installed
+                  ? 'Working…'
+                  : 'Installing…'
+                : cliBinary.installed
+                  ? 'Reinstall'
+                  : 'Install'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUninstallCliBinary}
+              disabled={cliBinaryBusy || !cliBinary.installed}
+              aria-label="Uninstall mdner CLI binary"
+              className="flex-1 sm:flex-none"
+            >
+              <Trash2 />
+              Uninstall
+            </Button>
+          </div>
+          {!cliBinary.inPath ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Heads up: <code className="font-mono">/usr/local/bin</code> doesn't appear in your{' '}
+              <code className="font-mono">PATH</code>. Add it to your shell rc to use{' '}
+              <code className="font-mono">mdner</code> directly.
+            </p>
+          ) : null}
+          <p
+            data-testid="settings-cli-binary-status"
+            aria-live="polite"
+            className={`min-h-5 text-xs ${cliBinaryError ? 'text-destructive' : 'text-muted-foreground'}`}
+          >
+            {cliBinaryMessage}
+          </p>
+        </div>
+
         <Separator />
         <div className={sectionGroupClass}>
           <h4 className="text-sm font-medium leading-none">Editor Preferences</h4>
