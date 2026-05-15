@@ -892,12 +892,23 @@ export default function App() {
   // mid-typing — breaking IME composition (e.g. typing Korean "안녕하세요"
   // would split into two lines).
   const lastEditorMarkdownRef = useRef<string>('');
+  const isWysiwygComposingRef = useRef(false);
+  const wysiwygCompositionFlushTimerRef = useRef<number | null>(null);
   useEffect(() => {
     isFindReplaceOpenRef.current = isFindReplaceOpen;
   }, [isFindReplaceOpen]);
 
-  // Remember the most recent focused element inside the Explorer so Cmd+0
-  // can restore that exact row instead of jumping to the first tree button.
+  useEffect(() => {
+    return () => {
+      if (wysiwygCompositionFlushTimerRef.current !== null) {
+        window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
+        wysiwygCompositionFlushTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Remember the most recent focused element inside sidebar panels so
+  // shortcuts can restore that exact row instead of jumping to the first item.
   useEffect(() => {
     const handleFocusIn = (event: FocusEvent) => {
       const target = event.target as HTMLElement | null;
@@ -1673,6 +1684,28 @@ export default function App() {
 
   const currentMode = snapshot.mode;
 
+  const publishWysiwygMarkdownDraft = useEffectEvent((markdown: string) => {
+    lastEditorMarkdownRef.current = markdown;
+    setLocalDraft(markdown);
+  });
+
+  const scheduleWysiwygCompositionFlush = useEffectEvent(
+    (nextEditor: { getMarkdown: () => string } | null | undefined) => {
+      if (wysiwygCompositionFlushTimerRef.current !== null) {
+        window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
+      }
+
+      wysiwygCompositionFlushTimerRef.current = window.setTimeout(() => {
+        wysiwygCompositionFlushTimerRef.current = null;
+        if (currentMode !== 'Wysiwyg' || !nextEditor) {
+          return;
+        }
+
+        publishWysiwygMarkdownDraft(nextEditor.getMarkdown());
+      }, 0);
+    },
+  );
+
   useEffect(() => {
     if (!activeDocumentOpen) {
       lastAnnouncedModeRef.current = currentMode;
@@ -1743,6 +1776,37 @@ export default function App() {
         }
         return false;
       },
+      handleDOMEvents: {
+        beforeinput: (view, event) => {
+          const inputEvent = event as InputEvent;
+          if (
+            inputEvent.isComposing ||
+            inputEvent.inputType === 'insertCompositionText' ||
+            view.composing
+          ) {
+            isWysiwygComposingRef.current = true;
+          }
+          return false;
+        },
+        compositionstart: () => {
+          isWysiwygComposingRef.current = true;
+          if (wysiwygCompositionFlushTimerRef.current !== null) {
+            window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
+            wysiwygCompositionFlushTimerRef.current = null;
+          }
+          return false;
+        },
+        compositionend: () => {
+          isWysiwygComposingRef.current = false;
+          scheduleWysiwygCompositionFlush(editor);
+          return false;
+        },
+        compositioncancel: () => {
+          isWysiwygComposingRef.current = false;
+          scheduleWysiwygCompositionFlush(editor);
+          return false;
+        },
+      },
     },
     onUpdate: ({ editor: nextEditor }) => {
       if (currentMode === 'Wysiwyg') {
@@ -1751,7 +1815,14 @@ export default function App() {
         // mistake this for an external change and clobber the active IME
         // composition.
         lastEditorMarkdownRef.current = markdown;
-        setLocalDraft(markdown);
+        if (isWysiwygComposingRef.current || nextEditor.view?.composing) {
+          // Keep ProseMirror's editable DOM authoritative during CJK
+          // composition. Publishing each intermediate jamo to React/backend
+          // draft sync can interrupt the IME and duplicate or split text.
+          return;
+        } else {
+          publishWysiwygMarkdownDraft(markdown);
+        }
       }
       if (settings.typewriterModeEnabled && currentMode === 'Wysiwyg') {
         window.requestAnimationFrame(() => centerTiptapEditorLine(nextEditor));

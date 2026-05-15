@@ -2710,6 +2710,58 @@ describe('App recent documents', () => {
     expect(editor.commands.setContent).not.toHaveBeenCalled();
   });
 
+  it('defers WYSIWYG CJK draft sync until IME composition ends', async () => {
+    const editor = createMockTiptapEditor('# ', [{ text: '', from: 1 }]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'korean.md',
+        activeDocumentPath: '/tmp/project/korean.md',
+        activeDocumentSource: '# ',
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByTestId('mock-tiptap-editor');
+    await waitFor(() => {
+      expect(editor.commands.setContent).toHaveBeenCalledWith('# ', {
+        contentType: 'markdown',
+        emitUpdate: false,
+      });
+    });
+    replaceActiveDocumentSourceMock.mockClear();
+
+    editor.view.composing = true;
+    editor.getMarkdown.mockReturnValue('# ㅇ');
+
+    act(() => {
+      tiptapMockState.lastOptions.onUpdate({ editor });
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 240));
+    });
+
+    expect(replaceActiveDocumentSourceMock).not.toHaveBeenCalled();
+
+    editor.view.composing = false;
+    editor.getMarkdown.mockReturnValue('# 안녕하세요');
+
+    act(() => {
+      const handler = tiptapMockState.lastOptions.editorProps.handleDOMEvents.compositionend;
+      expect(handler(editor.view, new Event('compositionend'))).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(replaceActiveDocumentSourceMock).toHaveBeenCalledWith('# 안녕하세요');
+    });
+    expect(replaceActiveDocumentSourceMock).not.toHaveBeenCalledWith('# ㅇ');
+  });
+
   it('disables Tiptap trailing nodes so headings and list items do not create an automatic blank line', async () => {
     const editor = createMockTiptapEditor('', []);
     tiptapMockState.editor = editor;
