@@ -1690,7 +1690,12 @@ export default function App() {
   });
 
   const scheduleWysiwygCompositionFlush = useEffectEvent(
-    (nextEditor: { getMarkdown: () => string } | null | undefined) => {
+    (
+      nextEditor:
+        | { getMarkdown: () => string; view?: { composing?: boolean } }
+        | null
+        | undefined,
+    ) => {
       if (wysiwygCompositionFlushTimerRef.current !== null) {
         window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
       }
@@ -1698,6 +1703,13 @@ export default function App() {
       wysiwygCompositionFlushTimerRef.current = window.setTimeout(() => {
         wysiwygCompositionFlushTimerRef.current = null;
         if (currentMode !== 'Wysiwyg' || !nextEditor) {
+          return;
+        }
+        // CJK IMEs typically chain composition events: compositionend for the
+        // current syllable can be immediately followed by compositionstart for
+        // the next jamo. Re-check the live composing flags so we don't snapshot
+        // a half-formed intermediate document and clobber the in-flight IME.
+        if (isWysiwygComposingRef.current || nextEditor.view?.composing) {
           return;
         }
 
@@ -1810,19 +1822,20 @@ export default function App() {
     },
     onUpdate: ({ editor: nextEditor }) => {
       if (currentMode === 'Wysiwyg') {
-        const markdown = nextEditor.getMarkdown();
-        // Record the editor-authored markdown so the sync effect doesn't
-        // mistake this for an external change and clobber the active IME
-        // composition.
-        lastEditorMarkdownRef.current = markdown;
         if (isWysiwygComposingRef.current || nextEditor.view?.composing) {
           // Keep ProseMirror's editable DOM authoritative during CJK
-          // composition. Publishing each intermediate jamo to React/backend
-          // draft sync can interrupt the IME and duplicate or split text.
+          // composition. Intermediate jamo states are unstable markdown and
+          // must NOT be written to lastEditorMarkdownRef — if they were, a
+          // setLocalDraft queued by the prior compositionend flush would
+          // later mismatch and trigger setContent, breaking the IME and
+          // splitting Korean syllables across lines.
           return;
-        } else {
-          publishWysiwygMarkdownDraft(markdown);
         }
+        const markdown = nextEditor.getMarkdown();
+        // Record the editor-authored markdown so the sync effect doesn't
+        // mistake this for an external change and clobber subsequent edits.
+        lastEditorMarkdownRef.current = markdown;
+        publishWysiwygMarkdownDraft(markdown);
       }
       if (settings.typewriterModeEnabled && currentMode === 'Wysiwyg') {
         window.requestAnimationFrame(() => centerTiptapEditorLine(nextEditor));

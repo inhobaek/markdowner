@@ -2762,6 +2762,67 @@ describe('App recent documents', () => {
     expect(replaceActiveDocumentSourceMock).not.toHaveBeenCalledWith('# ㅇ');
   });
 
+  it('does not setContent when a fresh composition kicks off right after compositionend', async () => {
+    // Regression test for a CJK IME race where compositionend publishes the
+    // committed markdown via setLocalDraft, then a brand-new compositionstart
+    // for the next syllable fires onUpdate with an intermediate-jamo markdown.
+    // If onUpdate updated lastEditorMarkdownRef during composition, the
+    // queued setLocalDraft would later mismatch and trigger setContent,
+    // tearing down the in-flight IME and splitting the next character onto
+    // its own line in headings / lists.
+    const editor = createMockTiptapEditor('# ', [{ text: '', from: 1 }]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'korean.md',
+        activeDocumentPath: '/tmp/project/korean.md',
+        activeDocumentSource: '# ',
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByTestId('mock-tiptap-editor');
+    await waitFor(() => {
+      expect(editor.commands.setContent).toHaveBeenCalledWith('# ', {
+        contentType: 'markdown',
+        emitUpdate: false,
+      });
+    });
+    editor.commands.setContent.mockClear();
+
+    // 1) compositionend for "안" — publishes committed markdown via flush.
+    editor.view.composing = false;
+    editor.getMarkdown.mockReturnValue('# 안');
+    act(() => {
+      const handler = tiptapMockState.lastOptions.editorProps.handleDOMEvents.compositionend;
+      handler(editor.view, new Event('compositionend'));
+    });
+
+    // 2) Immediately after, the IME starts the next syllable. ProseMirror
+    //    fires onUpdate with an intermediate decomposed-jamo markdown while
+    //    view.composing flips back to true.
+    editor.view.composing = true;
+    editor.getMarkdown.mockReturnValue('# 안ㄴ');
+    act(() => {
+      tiptapMockState.lastOptions.onUpdate({ editor });
+    });
+
+    // 3) Let React flush the queued setLocalDraft and run its effects.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    // setContent must NOT be called — doing so would tear down the IME and
+    // produce the reported "line break after one Korean character" symptom.
+    expect(editor.commands.setContent).not.toHaveBeenCalled();
+  });
+
   it('disables Tiptap trailing nodes so headings and list items do not create an automatic blank line', async () => {
     const editor = createMockTiptapEditor('', []);
     tiptapMockState.editor = editor;
