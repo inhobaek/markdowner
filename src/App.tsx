@@ -1863,6 +1863,14 @@ export default function App() {
         // matching prefix found within the 500 ms post-composition window.
         const now = Date.now();
         const buffer = wysiwygRecentCompositionDataRef.current;
+        // eslint-disable-next-line no-console
+        console.log('[CJK-DEBUG] handleTextInput', {
+          text,
+          from,
+          to,
+          buffer: buffer.map((b) => `${b.text}@${now - b.at}ms`).join(','),
+          oldDocText: view.state.doc.textContent,
+        });
         for (let i = 0; i < buffer.length; i += 1) {
           const entry = buffer[i];
           if (now - entry.at > 500) continue;
@@ -1871,6 +1879,11 @@ export default function App() {
           // a second time on a later legitimate insert.
           buffer.splice(i, 1);
           const cleaned = text.slice(entry.text.length);
+          // eslint-disable-next-line no-console
+          console.log('[CJK-DEBUG] handleTextInput STRIP', {
+            stripped: entry.text,
+            cleaned,
+          });
           if (cleaned.length === 0) {
             return true;
           }
@@ -1891,15 +1904,21 @@ export default function App() {
           }
           return false;
         },
-        compositionstart: () => {
+        compositionstart: (view: any, event: Event) => {
           isWysiwygComposingRef.current = true;
           if (wysiwygCompositionFlushTimerRef.current !== null) {
             window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
             wysiwygCompositionFlushTimerRef.current = null;
           }
+          // eslint-disable-next-line no-console
+          console.log('[CJK-DEBUG] compositionstart', {
+            data: (event as CompositionEvent).data,
+            domText: (view?.dom as HTMLElement | undefined)?.textContent,
+            stateText: view?.state?.doc?.textContent,
+          });
           return false;
         },
-        compositionend: (_view: any, event: Event) => {
+        compositionend: (view: any, event: Event) => {
           isWysiwygComposingRef.current = false;
           const now = Date.now();
           lastWysiwygCompositionEndAtRef.current = now;
@@ -1914,6 +1933,15 @@ export default function App() {
               ...recent.filter((entry) => now - entry.at < 1000),
             ].slice(0, 8);
           }
+          // eslint-disable-next-line no-console
+          console.log('[CJK-DEBUG] compositionend', {
+            data,
+            domText: (view?.dom as HTMLElement | undefined)?.textContent,
+            stateText: view?.state?.doc?.textContent,
+            buffer: wysiwygRecentCompositionDataRef.current
+              .map((b) => `${b.text}@${now - b.at}ms`)
+              .join(','),
+          });
           scheduleWysiwygCompositionFlush(editorInstanceRef.current);
           return false;
         },
@@ -1939,6 +1967,10 @@ export default function App() {
     ({ editor: nextEditor }: { editor: TiptapEditor }) => {
       if (currentModeRef.current === 'Wysiwyg') {
         if (isWysiwygComposingRef.current || nextEditor.view?.composing) {
+          // eslint-disable-next-line no-console
+          console.log('[CJK-DEBUG] onUpdate SKIP (composing)', {
+            stateText: nextEditor.state.doc.textContent,
+          });
           // Keep ProseMirror's editable DOM authoritative during CJK
           // composition. Intermediate jamo states are unstable markdown and
           // must NOT be written to lastEditorMarkdownRef — if they were, a
@@ -1948,6 +1980,11 @@ export default function App() {
           return;
         }
         const markdown = nextEditor.getMarkdown();
+        // eslint-disable-next-line no-console
+        console.log('[CJK-DEBUG] onUpdate PUBLISH', {
+          markdown,
+          stateText: nextEditor.state.doc.textContent,
+        });
         lastEditorMarkdownRef.current = markdown;
         publishWysiwygMarkdownDraft(markdown);
       }
