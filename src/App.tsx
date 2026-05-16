@@ -894,6 +894,12 @@ export default function App() {
   const lastEditorMarkdownRef = useRef<string>('');
   const isWysiwygComposingRef = useRef(false);
   const wysiwygCompositionFlushTimerRef = useRef<number | null>(null);
+  // Wall-clock timestamp of the most recent WYSIWYG compositionend. Used to
+  // suppress synthetic Enter keys that ProseMirror's readDOMChange dispatches
+  // when WebKit's Korean IME injects block-level DOM nodes (an empty <p>
+  // after the heading) between syllables — without this, every Hangul
+  // syllable after the first splits the heading into heading + paragraph.
+  const lastWysiwygCompositionEndAtRef = useRef<number>(0);
   // Mirrors the live Tiptap editor instance so memoized handleDOMEvents
   // callbacks (which capture closures at first render) can always reach the
   // current editor — without this, `editor` inside `compositionend` would be
@@ -1787,6 +1793,24 @@ export default function App() {
         class: `editor-surface tiptap-surface ${MARKDOWN_CONTENT_SCOPE_CLASS}`,
       },
       handleKeyDown: (view: any, event: KeyboardEvent) => {
+        // CJK IME guard: ProseMirror's readDOMChange synthesises an Enter
+        // keypress via view.someProp("handleKeyDown", f => f(view, keyEvent(13,
+        // "Enter"))) whenever a composition flush sees block-level DOM nodes
+        // it didn't dispatch itself. WebKit's Korean IME injects an empty <p>
+        // after the heading between syllables, which trips that heuristic and
+        // splits `# 안녕하세요` into `# 안` + paragraph `안녕하세요` after every
+        // syllable. The synthesised event has isTrusted=false, never bubbles
+        // through the real key pipeline, and only fires inside the ~500 ms
+        // window around an active/just-ended composition — so swallow it then.
+        if (
+          event.key === 'Enter' &&
+          (event as KeyboardEvent).isTrusted === false &&
+          (isWysiwygComposingRef.current ||
+            (view as { composing?: boolean }).composing ||
+            Date.now() - lastWysiwygCompositionEndAtRef.current < 500)
+        ) {
+          return true;
+        }
         if (
           event.key !== 'PageUp' &&
           event.key !== 'PageDown' &&
@@ -1833,11 +1857,13 @@ export default function App() {
         },
         compositionend: () => {
           isWysiwygComposingRef.current = false;
+          lastWysiwygCompositionEndAtRef.current = Date.now();
           scheduleWysiwygCompositionFlush(editorInstanceRef.current);
           return false;
         },
         compositioncancel: () => {
           isWysiwygComposingRef.current = false;
+          lastWysiwygCompositionEndAtRef.current = Date.now();
           scheduleWysiwygCompositionFlush(editorInstanceRef.current);
           return false;
         },
