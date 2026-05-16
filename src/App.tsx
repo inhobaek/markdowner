@@ -18,6 +18,7 @@ import { EditorContent, useEditor, type Editor as TiptapEditor } from '@tiptap/r
 import StarterKit from '@tiptap/starter-kit';
 import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtension';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
+import { SourceEditorView } from '@/components/SourceEditorView';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 import { ChevronDown, ChevronRight, FileText, FolderOpen } from 'lucide-react';
 import type {
@@ -1609,6 +1610,22 @@ export default function App() {
   const handleSourceEditorTypewriterChange = useEffectEvent((view: EditorView) => {
     if (!settings.typewriterModeEnabled) return;
     window.requestAnimationFrame(() => centerSourceEditorLine(view));
+  });
+
+  // Stable callback refs for the CodeMirror host. The inline arrow forms
+  // would create new identities on every parent render, defeating the
+  // memo on <SourceEditorView /> and forcing CodeMirror's host to
+  // reconcile on every cursor tick (the visible "text style flicker").
+  const handleSourceEditorChange = useEffectEvent((value: string) => {
+    setLocalDraft(value);
+  });
+  const handleSourceEditorStatistics = useEffectEvent((stats: unknown) => {
+    setCursorPosition((current) =>
+      nextCursorPositionFromStatistics(current, stats as Parameters<typeof nextCursorPositionFromStatistics>[1]),
+    );
+  });
+  const handleSourceEditorCreate = useEffectEvent((view: EditorView) => {
+    sourceEditorViewRef.current = view;
   });
 
   // Clicks landing on the empty padding around the WYSIWYG editor (below the
@@ -4491,23 +4508,15 @@ export default function App() {
           </>
         }
         sourceEditor={
-          <div ref={sourceEditorContainerRef} className="h-full min-h-0">
-            <CodeMirror
-              value={localDraft}
-              height="100%"
-              extensions={sourceEditorExtensions}
-              onChange={(value) => setLocalDraft(value)}
-              onStatistics={(stats) => {
-                setCursorPosition((current) =>
-                  nextCursorPositionFromStatistics(current, stats),
-                );
-              }}
-              onCreateEditor={(view) => {
-                sourceEditorViewRef.current = view;
-              }}
-              theme={snapshot.theme.kind === 'BuiltInDark' ? 'dark' : 'light'}
-            />
-          </div>
+          <SourceEditorView
+            value={localDraft}
+            extensions={sourceEditorExtensions}
+            theme={snapshot.theme.kind === 'BuiltInDark' ? 'dark' : 'light'}
+            onChange={handleSourceEditorChange}
+            onStatistics={handleSourceEditorStatistics}
+            onCreateEditor={handleSourceEditorCreate}
+            containerRef={sourceEditorContainerRef}
+          />
         }
         splitViewPreview={
           <div
