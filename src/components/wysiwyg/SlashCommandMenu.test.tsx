@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlashCommandMenu } from './SlashCommandMenu';
 
-function createSlashEditor() {
+function createSlashEditor(
+  coords: { top: number; bottom: number; left: number; right: number } = {
+    top: 24,
+    bottom: 42,
+    left: 18,
+    right: 18,
+  },
+) {
   const handlers = new Map<string, Set<() => void>>();
   const dom = document.createElement('div');
 
@@ -24,7 +31,7 @@ function createSlashEditor() {
     },
     view: {
       dom,
-      coordsAtPos: () => ({ top: 24, bottom: 42, left: 18, right: 18 }),
+      coordsAtPos: () => coords,
     },
     on: vi.fn((name: string, handler: () => void) => {
       if (!handlers.has(name)) handlers.set(name, new Set());
@@ -121,5 +128,58 @@ describe('SlashCommandMenu', () => {
     await waitFor(() => {
       expect(screen.queryByRole('menu', { name: /insert block/i })).not.toBeInTheDocument();
     });
+  });
+
+  it('flips the menu above the caret when there is no room below', async () => {
+    // Caret near the bottom of the viewport: ~12px of space below, ~744px above.
+    // jsdom defaults innerHeight=768; the menu needs the room above to avoid clipping.
+    const editor = createSlashEditor({ top: 740, bottom: 756, left: 18, right: 18 });
+
+    // jsdom doesn't compute layout; stub offsetHeight so the placement effect
+    // sees a non-zero menu height.
+    const offsetHeightSpy = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockReturnValue(360);
+
+    render(<SlashCommandMenu editor={editor} />);
+
+    act(() => {
+      editor.emit('update');
+    });
+
+    const menu = await screen.findByRole('menu', { name: /insert block/i });
+    await waitFor(() => {
+      expect(menu).toHaveAttribute('data-placement', 'above');
+    });
+    expect(menu.style.bottom).not.toBe('');
+    expect(menu.style.top).toBe('');
+
+    // Item order should be preserved — Text is still first, not reversed.
+    const items = screen.getAllByRole('menuitem');
+    expect(items[0]).toHaveTextContent(/text/i);
+
+    offsetHeightSpy.mockRestore();
+  });
+
+  it('keeps the menu below the caret when there is room', async () => {
+    const editor = createSlashEditor({ top: 24, bottom: 42, left: 18, right: 18 });
+    const offsetHeightSpy = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockReturnValue(360);
+
+    render(<SlashCommandMenu editor={editor} />);
+
+    act(() => {
+      editor.emit('update');
+    });
+
+    const menu = await screen.findByRole('menu', { name: /insert block/i });
+    await waitFor(() => {
+      expect(menu).toHaveAttribute('data-placement', 'below');
+    });
+    expect(menu.style.top).not.toBe('');
+    expect(menu.style.bottom).toBe('');
+
+    offsetHeightSpy.mockRestore();
   });
 });

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
 import {
@@ -137,9 +138,17 @@ type MenuState =
       from: number;
       /** Document position immediately after the typed query. */
       to: number;
-      top: number;
+      /** Viewport coords for the slash caret line — used to decide above/below placement. */
+      cursorTop: number;
+      cursorBottom: number;
       left: number;
     };
+
+type Placement = 'below' | 'above';
+
+/** Pixels of breathing room between the menu and the cursor / viewport edges. */
+const MENU_GUTTER = 6;
+const VIEWPORT_MARGIN = 8;
 
 interface Props {
   editor: Editor | null;
@@ -157,6 +166,7 @@ interface Props {
 export function SlashCommandMenu({ editor, enabled = true }: Props) {
   const [menu, setMenu] = useState<MenuState>({ open: false });
   const [activeIndex, setActiveIndex] = useState(0);
+  const [placement, setPlacement] = useState<Placement>('below');
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
 
@@ -190,6 +200,33 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
     const node = itemRefs.current[safeIndex];
     node?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, filteredItems, menu.open]);
+
+  // Flip the menu above the caret when there isn't enough room below — keeps
+  // the dropdown from being clipped near the bottom of the viewport. Item
+  // order is preserved; only the box's anchor side changes.
+  useLayoutEffect(() => {
+    if (!menu.open) {
+      setPlacement('below');
+      return;
+    }
+    const menuEl = menuRef.current;
+    if (!menuEl) return;
+    const height = menuEl.offsetHeight;
+    if (height <= 0) return;
+    const viewportHeight =
+      typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerHeight;
+    const spaceBelow = viewportHeight - menu.cursorBottom - MENU_GUTTER - VIEWPORT_MARGIN;
+    const spaceAbove = menu.cursorTop - MENU_GUTTER - VIEWPORT_MARGIN;
+    let next: Placement;
+    if (height <= spaceBelow) {
+      next = 'below';
+    } else if (height <= spaceAbove) {
+      next = 'above';
+    } else {
+      next = spaceAbove > spaceBelow ? 'above' : 'below';
+    }
+    setPlacement((prev) => (prev === next ? prev : next));
+  }, [menu, filteredItems]);
 
   // Watch editor transactions and recompute menu state.
   useEffect(() => {
@@ -245,7 +282,8 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
         query,
         from: matchStart,
         to: from,
-        top: coords.bottom + 6,
+        cursorTop: coords.top,
+        cursorBottom: coords.bottom,
         left: coords.left,
       });
     };
@@ -342,14 +380,22 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
   const portalTarget = typeof document === 'undefined' ? null : document.body;
   if (!portalTarget) return null;
 
+  const viewportHeight =
+    typeof window === 'undefined' ? 0 : window.innerHeight;
+  const positionStyle: CSSProperties =
+    placement === 'above'
+      ? { bottom: viewportHeight - menu.cursorTop + MENU_GUTTER, left: menu.left }
+      : { top: menu.cursorBottom + MENU_GUTTER, left: menu.left };
+
   return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Insert block"
       data-testid="slash-command-menu"
+      data-placement={placement}
       className="slash-command-menu"
-      style={{ top: menu.top, left: menu.left }}
+      style={positionStyle}
       onMouseDown={(event) => {
         // Keep the editor selection while clicking menu items.
         event.preventDefault();
