@@ -128,6 +128,107 @@ export function wysiwygPositionAtSourceLine(
   return wysiwygPositionAtSourceLocation(editor, { line: targetLine, column: 1 });
 }
 
+// Returns the markdown character offset of the WYSIWYG cursor — "where would
+// the cursor be if you dropped me into the markdown source at this point".
+// Computed by serializing the doc prefix up to selection.from and taking its
+// length, so it's symmetric with the source editor's native character-offset
+// cursor model (which is what we need for an exact mode-switch round-trip).
+export function wysiwygCursorMarkdownOffset(editor: TiptapEditor | null): number {
+  if (!editor) return 0;
+  const from = editor.state.selection.from;
+  if (from <= 0) return 0;
+  try {
+    const slice = editor.state.doc.cut(0, from);
+    const serializer = getMarkdownSerializer(editor);
+    if (!serializer) return 0;
+    return serializer.serialize(slice).length;
+  } catch {
+    return 0;
+  }
+}
+
+// Inverse of `wysiwygCursorMarkdownOffset`: returns the ProseMirror position
+// that corresponds to the given markdown character offset. Walks top-level
+// blocks, serializing the cumulative prefix at each step; lands inside the
+// block whose serialized markdown brackets the target offset. Within
+// paragraphs and headings the residual offset advances through text content;
+// for everything else (lists, blockquotes, tables, code fences) the caret
+// snaps to the block's start, since their inner structure can't be safely
+// advanced from a flat character count.
+//
+// Block separators: prosemirror-markdown consistently emits "\n\n" between
+// top-level blocks via closeBlock(). The first block has no preceding
+// separator. We account for both when computing the residual offset.
+export function wysiwygPositionAtMarkdownOffset(
+  editor: TiptapEditor | null,
+  targetOffset: number,
+): number | null {
+  if (!editor) return null;
+  if (!Number.isFinite(targetOffset) || targetOffset <= 0) return 0;
+  const serializer = getMarkdownSerializer(editor);
+  if (!serializer) return null;
+
+  const doc = editor.state.doc;
+  type BlockNode = { type?: { name?: string }; attrs?: { level?: number }; textContent: string };
+  let prevCumulativeLength = 0;
+  let positionAfterPreviousBlocks = 0;
+  let candidatePos: number | null = null;
+  let candidateNode: BlockNode | null = null;
+  let candidateRemaining = 0;
+
+  try {
+    doc.forEach((node, offset) => {
+      if (candidatePos !== null) return;
+      const blockOpenPosition = offset + 1; // skip past the opening token
+      const sliceEnd = offset + node.nodeSize;
+      const cumulativeLength = serializer.serialize(doc.cut(0, sliceEnd)).length;
+
+      if (cumulativeLength >= targetOffset) {
+        // Target lands within this block's contribution to the cumulative
+        // serialization (which may include the "\n\n" separator before it).
+        const blockOnlyLength = serializer.serialize(doc.cut(offset, sliceEnd)).length;
+        // 0 for the first block (no preceding separator), otherwise 2 chars
+        // for "\n\n". Derived rather than hard-coded so any future serializer
+        // tweak surfaces here instead of silently mis-aligning the caret.
+        const separatorLength =
+          prevCumulativeLength === 0
+            ? 0
+            : Math.max(0, cumulativeLength - prevCumulativeLength - blockOnlyLength);
+        // Residual offset relative to this block's own markdown. Clamps to 0
+        // when the target sits inside the separator itself (between blocks).
+        candidatePos = blockOpenPosition;
+        candidateNode = node as BlockNode;
+        candidateRemaining = Math.max(0, targetOffset - prevCumulativeLength - separatorLength);
+        return;
+      }
+      prevCumulativeLength = cumulativeLength;
+      positionAfterPreviousBlocks = sliceEnd;
+    });
+  } catch {
+    return null;
+  }
+
+  if (candidatePos === null || candidateNode === null) {
+    // Target offset extends past every block — land at the last valid text
+    // position (inside the closing token of the last block).
+    return Math.max(0, positionAfterPreviousBlocks - 1);
+  }
+
+  const node: BlockNode = candidateNode;
+  const typeName = node.type?.name;
+  let prefixLength = 0;
+  if (typeName === 'heading') {
+    const level = Math.max(1, Math.min(6, node.attrs?.level ?? 1));
+    prefixLength = level + 1; // e.g. "## "
+  } else if (typeName !== 'paragraph') {
+    return candidatePos;
+  }
+
+  const maxAdvance = Math.max(0, node.textContent.length);
+  const advance = Math.min(Math.max(0, candidateRemaining - prefixLength), maxAdvance);
+  return candidatePos + advance;
+}
+
 type Serializer = {
   serialize: (doc: unknown) => string;
 };

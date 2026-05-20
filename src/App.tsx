@@ -101,7 +101,9 @@ import {
 } from './lib/findReplace';
 import { nextCursorPositionFromStatistics } from './lib/cursorPosition';
 import {
+  wysiwygCursorMarkdownOffset,
   wysiwygCursorSourceLocation,
+  wysiwygPositionAtMarkdownOffset,
   wysiwygPositionAtSourceLocation,
   type SourceCursorLocation,
 } from './lib/modeCursor';
@@ -3507,41 +3509,54 @@ export default function App() {
     return () => window.cancelAnimationFrame(frame);
   }, [currentMode, activeDocumentOpen, settings.showMinimap, editor]);
 
-  // Cursor handoff between WYSIWYG ↔ Source on mode change. Captures the
-  // logical line the user was on in the *previous* mode and replays it in
-  // the new one once the editor surface has actually mounted/laid out.
+  // Cursor handoff between WYSIWYG ↔ Source on mode change. Uses the markdown
+  // character offset of the cursor as the canonical position — both editors
+  // map cleanly to/from it, so the cursor lands on the *exact same character*
+  // after a mode switch. The earlier line+column scheme would drift by a line
+  // at the end of a document because the WYSIWYG TrailingNode adds an empty
+  // paragraph that doesn't exist in the markdown source (so e.g. "end of doc"
+  // in WYSIWYG was line N+1 col 1 in the conversion, then clamped to source
+  // end ≠ source's actual line N).
   useEffect(() => {
     const previousMode = previousModeForCursorRef.current;
     previousModeForCursorRef.current = currentMode;
     if (previousMode === currentMode) return;
     if (!activeDocumentOpen) return;
 
-    const sourceLocation: SourceCursorLocation =
-      previousMode === 'Wysiwyg'
-        ? wysiwygCursorLocationRef.current
-        : { line: cursorPosition.line, column: cursorPosition.column };
-    if (!Number.isFinite(sourceLocation.line) || sourceLocation.line < 1) return;
+    const editorInstance = editorInstanceRef.current;
+    // Resolve the cursor's markdown offset in the mode we're *leaving*. For
+    // WYSIWYG we serialize the doc prefix; for source / split view we
+    // translate the (line, column) tuple CodeMirror already gave us.
+    let markdownOffset: number;
+    if (previousMode === 'Wysiwyg') {
+      markdownOffset = wysiwygCursorMarkdownOffset(editorInstance);
+    } else {
+      const lineStart = getSourceOffsetForLine(cursorPosition.line);
+      markdownOffset = lineStart + Math.max(0, cursorPosition.column - 1);
+    }
+    if (!Number.isFinite(markdownOffset) || markdownOffset < 0) return;
 
     // Defer to the next frame so the editor pane that just became visible
     // has measured layout — focus()/setSelection on a display:none element
     // is a silent no-op in Chromium-based webviews.
     const frame = window.requestAnimationFrame(() => {
       if (currentMode === 'Wysiwyg') {
-        const editorInstance = editorInstanceRef.current;
-        if (!editorInstance) return;
-        const pos = wysiwygPositionAtSourceLocation(editorInstance, sourceLocation);
+        const incomingEditor = editorInstanceRef.current;
+        if (!incomingEditor) return;
+        const pos = wysiwygPositionAtMarkdownOffset(incomingEditor, markdownOffset);
         if (pos === null) {
-          editorInstance.chain().focus().run();
+          incomingEditor.chain().focus().run();
           return;
         }
-        editorInstance.chain().focus().setTextSelection(pos).run();
+        incomingEditor.chain().focus().setTextSelection(pos).run();
         return;
       }
-      // Editor or SplitView — the source pane owns the caret.
-      const lineStart = getSourceOffsetForLine(sourceLocation.line);
-      const lineText = lineTextFromOffset(localDraft, lineStart);
-      const column = Math.max(0, Math.min(lineText.length, sourceLocation.column - 1));
-      focusSourceSelection(lineStart + column);
+      // Editor or SplitView — the source pane owns the caret. The markdown
+      // offset *is* the CodeMirror offset in normal cases; clamp to keep the
+      // caret inside the doc when WYSIWYG's serialized markdown ran longer
+      // than the source (e.g. a TrailingNode's extra blank paragraph).
+      const clamped = Math.max(0, Math.min(markdownOffset, localDraft.length));
+      focusSourceSelection(clamped);
     });
     return () => window.cancelAnimationFrame(frame);
     // We intentionally omit cursorPosition.* and getSourceOffsetForLine —
