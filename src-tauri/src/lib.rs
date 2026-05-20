@@ -48,6 +48,9 @@ const CLI_LAUNCHER_DEFAULT_EXECUTABLE: &str =
     "/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop";
 const CLI_LAUNCHER_BEGIN_MARKER: &str = "# >>> markdowner CLI launcher >>>";
 const CLI_LAUNCHER_END_MARKER: &str = "# <<< markdowner CLI launcher <<<";
+const CLI_LAUNCHER_DEFAULT_APP_BUNDLE: &str = "/Applications/Markdowner.app";
+const CTRL_G_LAUNCHER_BEGIN_MARKER: &str = "# >>> markdowner Ctrl+G launcher >>>";
+const CTRL_G_LAUNCHER_END_MARKER: &str = "# <<< markdowner Ctrl+G launcher <<<";
 
 const CLI_BINARY_INSTALL_PATH: &str = "/usr/local/bin/mdner";
 const CLI_BINARY_SCRIPT_TAG: &str = "# markdowner-cli-wrapper";
@@ -82,6 +85,24 @@ struct CliBinaryActionResult {
     install_path: String,
     target_executable: String,
     /// True when install/uninstall was a no-op (already-in-target-state).
+    already_done: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CtrlGLauncherStatus {
+    shell_config_path: String,
+    /// macOS .app bundle the bindkey opens. Surfaced to the Settings UI so
+    /// the user sees which Markdowner instance Ctrl+G will launch.
+    target_app_bundle: String,
+    installed: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CtrlGLauncherActionResult {
+    shell_config_path: String,
+    /// True when install/uninstall was a no-op (already in target state).
     already_done: bool,
 }
 
@@ -568,6 +589,164 @@ fn install_cli_launcher_alias(
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShellKind {
+    Bash,
+    Zsh,
+}
+
+fn shell_kind_for(shell: Option<&str>) -> ShellKind {
+    let name = shell
+        .and_then(|value| Path::new(value).file_name())
+        .and_then(|value| value.to_str());
+    match name {
+        Some("bash") => ShellKind::Bash,
+        _ => ShellKind::Zsh,
+    }
+}
+
+/// Derive the Markdowner.app bundle path from the running executable. The
+/// running binary lives at `Markdowner.app/Contents/MacOS/markdowner-desktop`;
+/// the shell `open -a` command wants the `.app` directory itself.
+fn cli_launcher_app_bundle_for_executable(executable_path: &Path) -> PathBuf {
+    let candidate = executable_path
+        .parent() // Contents/MacOS
+        .and_then(Path::parent) // Contents
+        .and_then(Path::parent); // .app
+    match candidate {
+        Some(app)
+            if app
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("app")) =>
+        {
+            app.to_path_buf()
+        }
+        _ => PathBuf::from(CLI_LAUNCHER_DEFAULT_APP_BUNDLE),
+    }
+}
+
+/// Build the shell snippet that wires Ctrl+G to `open -a <app>`. Uses a
+/// `zle` widget on zsh (silent, no echo into the prompt) and `bind -x` on
+/// bash. Both reference a unique function name so a stray Ctrl+G binding the
+/// user previously set in the same rc file is left alone.
+fn ctrl_g_launcher_script_for_shell(shell_kind: ShellKind, app_bundle_path: &Path) -> String {
+    let escaped = double_quote_shell_value(&app_bundle_path.to_string_lossy());
+    match shell_kind {
+        ShellKind::Bash => format!(
+            "__markdowner_ctrl_g_launch() {{ open -a \"{path}\"; }}\nbind -x '\"\\C-g\": __markdowner_ctrl_g_launch'",
+            path = escaped,
+        ),
+        ShellKind::Zsh => format!(
+            "__markdowner_ctrl_g_launch() {{ open -a \"{path}\" }}\nzle -N __markdowner_ctrl_g_launch\nbindkey \"^G\" __markdowner_ctrl_g_launch",
+            path = escaped,
+        ),
+    }
+}
+
+fn ctrl_g_launcher_managed_block(script: &str) -> String {
+    format!("{CTRL_G_LAUNCHER_BEGIN_MARKER}\n{script}\n{CTRL_G_LAUNCHER_END_MARKER}\n")
+}
+
+fn remove_ctrl_g_launcher_managed_block(contents: &str) -> String {
+    let Some(start) = contents.find(CTRL_G_LAUNCHER_BEGIN_MARKER) else {
+        return contents.to_string();
+    };
+    let Some(end_relative) = contents[start..].find(CTRL_G_LAUNCHER_END_MARKER) else {
+        return contents.to_string();
+    };
+
+    let end = start + end_relative + CTRL_G_LAUNCHER_END_MARKER.len();
+    let remove_end = if contents[end..].starts_with("\r\n") {
+        end + 2
+    } else if contents[end..].starts_with('\n') {
+        end + 1
+    } else {
+        end
+    };
+
+    format!("{}{}", &contents[..start], &contents[remove_end..])
+}
+
+fn append_ctrl_g_launcher_managed_block(mut contents: String, managed_block: &str) -> String {
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        contents.push('\n');
+    }
+    if !contents.trim().is_empty() && !contents.ends_with("\n\n") {
+        contents.push('\n');
+    }
+    contents.push_str(managed_block);
+    contents
+}
+
+fn install_ctrl_g_launcher_block(
+    shell_config_path: &Path,
+    managed_block: &str,
+) -> Result<CtrlGLauncherActionResult, String> {
+    let existing = match std::fs::read_to_string(shell_config_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    let already_installed = existing.contains(managed_block);
+
+    if !already_installed {
+        if let Some(parent) = shell_config_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        // Strip any stale block (e.g. left over from an older install path)
+        // before appending so we never accumulate duplicates.
+        let next_contents = append_ctrl_g_launcher_managed_block(
+            remove_ctrl_g_launcher_managed_block(&existing),
+            managed_block,
+        );
+        std::fs::write(shell_config_path, next_contents).map_err(|e| e.to_string())?;
+    }
+
+    Ok(CtrlGLauncherActionResult {
+        shell_config_path: shell_config_path.display().to_string(),
+        already_done: already_installed,
+    })
+}
+
+fn uninstall_ctrl_g_launcher_block(
+    shell_config_path: &Path,
+) -> Result<CtrlGLauncherActionResult, String> {
+    let existing = match std::fs::read_to_string(shell_config_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CtrlGLauncherActionResult {
+                shell_config_path: shell_config_path.display().to_string(),
+                already_done: true,
+            });
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+
+    if !existing.contains(CTRL_G_LAUNCHER_BEGIN_MARKER) {
+        return Ok(CtrlGLauncherActionResult {
+            shell_config_path: shell_config_path.display().to_string(),
+            already_done: true,
+        });
+    }
+
+    let next_contents = remove_ctrl_g_launcher_managed_block(&existing);
+    std::fs::write(shell_config_path, next_contents).map_err(|e| e.to_string())?;
+
+    Ok(CtrlGLauncherActionResult {
+        shell_config_path: shell_config_path.display().to_string(),
+        already_done: false,
+    })
+}
+
+fn ctrl_g_launcher_is_installed(shell_config_path: &Path) -> bool {
+    std::fs::read_to_string(shell_config_path)
+        .map(|contents| contents.contains(CTRL_G_LAUNCHER_BEGIN_MARKER))
+        .unwrap_or(false)
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSearchOptions {
@@ -771,6 +950,45 @@ fn install_cli_launcher() -> Result<CliLauncherInstallResult, String> {
     let alias_command = cli_launcher_alias_command_for_path(&executable_path);
 
     install_cli_launcher_alias(&shell_config_path, &alias_command)
+}
+
+#[tauri::command]
+fn ctrl_g_launcher_status() -> Result<CtrlGLauncherStatus, String> {
+    let home_dir = user_home_dir()?;
+    let shell = env::var("SHELL").ok();
+    let shell_config_path = shell_config_path_for_shell(&home_dir, shell.as_deref());
+    let executable_path = cli_launcher_executable_path();
+    let app_bundle = cli_launcher_app_bundle_for_executable(&executable_path);
+    let installed = ctrl_g_launcher_is_installed(&shell_config_path);
+
+    Ok(CtrlGLauncherStatus {
+        shell_config_path: shell_config_path.display().to_string(),
+        target_app_bundle: app_bundle.display().to_string(),
+        installed,
+    })
+}
+
+#[tauri::command]
+fn install_ctrl_g_launcher() -> Result<CtrlGLauncherActionResult, String> {
+    let home_dir = user_home_dir()?;
+    let shell = env::var("SHELL").ok();
+    let shell_config_path = shell_config_path_for_shell(&home_dir, shell.as_deref());
+    let shell_kind = shell_kind_for(shell.as_deref());
+    let executable_path = cli_launcher_executable_path();
+    let app_bundle = cli_launcher_app_bundle_for_executable(&executable_path);
+    let script = ctrl_g_launcher_script_for_shell(shell_kind, &app_bundle);
+    let managed_block = ctrl_g_launcher_managed_block(&script);
+
+    install_ctrl_g_launcher_block(&shell_config_path, &managed_block)
+}
+
+#[tauri::command]
+fn uninstall_ctrl_g_launcher() -> Result<CtrlGLauncherActionResult, String> {
+    let home_dir = user_home_dir()?;
+    let shell = env::var("SHELL").ok();
+    let shell_config_path = shell_config_path_for_shell(&home_dir, shell.as_deref());
+
+    uninstall_ctrl_g_launcher_block(&shell_config_path)
 }
 
 fn cli_binary_wrapper_script_for_target(target_executable: &Path) -> String {
@@ -1545,6 +1763,9 @@ pub fn run() {
             load_settings,
             save_settings,
             install_cli_launcher,
+            ctrl_g_launcher_status,
+            install_ctrl_g_launcher,
+            uninstall_ctrl_g_launcher,
             cli_binary_status,
             install_cli_binary,
             uninstall_cli_binary,
@@ -1562,21 +1783,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{collections::HashMap, fs, path::Path};
 
     use markdowner_core::ThemeKind;
     use tempfile::tempdir;
 
     use super::{
-        CLI_BINARY_SCRIPT_TAG, DesktopBackend, FILE_MENU_COMMANDS, MENU_COMMAND_CLOSE_WINDOW,
-        MENU_COMMAND_NEW_DOCUMENT, MENU_COMMAND_OPEN_DOCUMENT, MENU_COMMAND_OPEN_WORKSPACE,
-        MENU_COMMAND_QUIT_APP, MENU_COMMAND_SAVE_ACTIVE_DOCUMENT,
-        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS, MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_EDIT_TITLE,
-        MENU_FILE_TITLE, MENU_VIEW_TITLE, TopLevelMenuSection, VIEW_MENU_COMMANDS,
-        cli_binary_install_is_ours, cli_binary_wrapper_script_for_target,
-        cli_launcher_alias_command_for_path, install_cli_binary_at, install_cli_launcher_alias,
-        menu_command_from_id, open_startup_path, resolve_cli_path, shell_config_path_for_shell,
-        top_level_menu_sections, uninstall_cli_binary_at,
+        CLI_BINARY_SCRIPT_TAG, CTRL_G_LAUNCHER_BEGIN_MARKER, CTRL_G_LAUNCHER_END_MARKER,
+        DesktopBackend, FILE_MENU_COMMANDS, MENU_COMMAND_CLOSE_WINDOW, MENU_COMMAND_NEW_DOCUMENT,
+        MENU_COMMAND_OPEN_DOCUMENT, MENU_COMMAND_OPEN_WORKSPACE, MENU_COMMAND_QUIT_APP,
+        MENU_COMMAND_SAVE_ACTIVE_DOCUMENT, MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS,
+        MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_EDIT_TITLE, MENU_FILE_TITLE, MENU_VIEW_TITLE,
+        ShellKind, TopLevelMenuSection, VIEW_MENU_COMMANDS, cli_binary_install_is_ours,
+        cli_binary_wrapper_script_for_target, cli_launcher_alias_command_for_path,
+        cli_launcher_app_bundle_for_executable, ctrl_g_launcher_managed_block,
+        ctrl_g_launcher_script_for_shell, install_cli_binary_at, install_cli_launcher_alias,
+        install_ctrl_g_launcher_block, menu_command_from_id, open_startup_path, resolve_cli_path,
+        shell_config_path_for_shell, top_level_menu_sections, uninstall_cli_binary_at,
+        uninstall_ctrl_g_launcher_block,
     };
 
     #[test]
@@ -1757,6 +1981,112 @@ mod tests {
 
         let result = uninstall_cli_binary_at(&install_path, target).unwrap();
         assert!(result.already_done);
+    }
+
+    #[test]
+    fn cli_launcher_app_bundle_extracts_app_from_executable_path() {
+        let bundle = cli_launcher_app_bundle_for_executable(Path::new(
+            "/Applications/Markdowner.app/Contents/MacOS/markdowner-desktop",
+        ));
+        assert_eq!(bundle, Path::new("/Applications/Markdowner.app"));
+    }
+
+    #[test]
+    fn ctrl_g_launcher_zsh_script_binds_open_a_to_ctrl_g() {
+        let script = ctrl_g_launcher_script_for_shell(
+            ShellKind::Zsh,
+            Path::new("/Applications/Markdowner.app"),
+        );
+        // zsh path uses a zle widget so the prompt isn't echoed with the command.
+        assert!(script.contains("__markdowner_ctrl_g_launch()"));
+        assert!(script.contains("open -a \"/Applications/Markdowner.app\""));
+        assert!(script.contains("zle -N __markdowner_ctrl_g_launch"));
+        assert!(script.contains("bindkey \"^G\" __markdowner_ctrl_g_launch"));
+    }
+
+    #[test]
+    fn ctrl_g_launcher_bash_script_uses_bind_x() {
+        let script = ctrl_g_launcher_script_for_shell(
+            ShellKind::Bash,
+            Path::new("/Applications/Markdowner.app"),
+        );
+        // bash has no zle, so the binding is wired through readline's `bind -x`.
+        assert!(script.contains("__markdowner_ctrl_g_launch()"));
+        assert!(script.contains("open -a \"/Applications/Markdowner.app\""));
+        assert!(script.contains("bind -x '\"\\C-g\": __markdowner_ctrl_g_launch'"));
+    }
+
+    #[test]
+    fn install_ctrl_g_launcher_writes_managed_shell_block() {
+        let temp = tempdir().unwrap();
+        let shell_config_path = temp.path().join(".zshrc");
+        fs::write(&shell_config_path, "export EDITOR=vim\n").unwrap();
+
+        let script = ctrl_g_launcher_script_for_shell(
+            ShellKind::Zsh,
+            Path::new("/Applications/Markdowner.app"),
+        );
+        let block = ctrl_g_launcher_managed_block(&script);
+        let result = install_ctrl_g_launcher_block(&shell_config_path, &block).unwrap();
+
+        assert!(!result.already_done);
+        let contents = fs::read_to_string(&shell_config_path).unwrap();
+        assert!(contents.contains(CTRL_G_LAUNCHER_BEGIN_MARKER));
+        assert!(contents.contains(CTRL_G_LAUNCHER_END_MARKER));
+        assert!(contents.contains("bindkey \"^G\" __markdowner_ctrl_g_launch"));
+        assert!(contents.starts_with("export EDITOR=vim\n"));
+    }
+
+    #[test]
+    fn install_ctrl_g_launcher_is_idempotent() {
+        let temp = tempdir().unwrap();
+        let shell_config_path = temp.path().join(".zshrc");
+        let script = ctrl_g_launcher_script_for_shell(
+            ShellKind::Zsh,
+            Path::new("/Applications/Markdowner.app"),
+        );
+        let block = ctrl_g_launcher_managed_block(&script);
+
+        install_ctrl_g_launcher_block(&shell_config_path, &block).unwrap();
+        let second = install_ctrl_g_launcher_block(&shell_config_path, &block).unwrap();
+
+        assert!(second.already_done);
+        let contents = fs::read_to_string(&shell_config_path).unwrap();
+        assert_eq!(contents.matches(CTRL_G_LAUNCHER_BEGIN_MARKER).count(), 1);
+    }
+
+    #[test]
+    fn uninstall_ctrl_g_launcher_removes_managed_block() {
+        let temp = tempdir().unwrap();
+        let shell_config_path = temp.path().join(".zshrc");
+        fs::write(&shell_config_path, "export EDITOR=vim\n").unwrap();
+        let script = ctrl_g_launcher_script_for_shell(
+            ShellKind::Zsh,
+            Path::new("/Applications/Markdowner.app"),
+        );
+        let block = ctrl_g_launcher_managed_block(&script);
+
+        install_ctrl_g_launcher_block(&shell_config_path, &block).unwrap();
+        let result = uninstall_ctrl_g_launcher_block(&shell_config_path).unwrap();
+
+        assert!(!result.already_done);
+        let contents = fs::read_to_string(&shell_config_path).unwrap();
+        assert!(!contents.contains(CTRL_G_LAUNCHER_BEGIN_MARKER));
+        // User-authored config outside the managed block must survive uninstall.
+        assert!(contents.contains("export EDITOR=vim"));
+    }
+
+    #[test]
+    fn uninstall_ctrl_g_launcher_is_idempotent_when_absent() {
+        let temp = tempdir().unwrap();
+        let shell_config_path = temp.path().join(".zshrc");
+
+        let result = uninstall_ctrl_g_launcher_block(&shell_config_path).unwrap();
+        assert!(result.already_done);
+
+        fs::write(&shell_config_path, "export EDITOR=vim\n").unwrap();
+        let again = uninstall_ctrl_g_launcher_block(&shell_config_path).unwrap();
+        assert!(again.already_done);
     }
 
     #[test]

@@ -22,10 +22,14 @@ import {
   OUTLINE_ROW_SPACING_MAX,
   OUTLINE_ROW_SPACING_MIN,
   cliBinaryStatus,
+  ctrlGLauncherStatus,
   installCliBinary,
+  installCtrlGLauncher,
   uninstallCliBinary,
+  uninstallCtrlGLauncher,
   type CliBinaryStatus,
   type CodeBlockTheme,
+  type CtrlGLauncherStatus,
   type Settings,
 } from '@/lib/settings';
 
@@ -68,6 +72,15 @@ export function SettingsPanel({
   const [cliBinaryBusy, setCliBinaryBusy] = useState(false);
   const [cliBinaryMessage, setCliBinaryMessage] = useState('');
   const [cliBinaryError, setCliBinaryError] = useState(false);
+
+  const [ctrlGLauncher, setCtrlGLauncher] = useState<CtrlGLauncherStatus>({
+    shellConfigPath: '',
+    targetAppBundle: '',
+    installed: false,
+  });
+  const [ctrlGLauncherBusy, setCtrlGLauncherBusy] = useState(false);
+  const [ctrlGLauncherMessage, setCtrlGLauncherMessage] = useState('');
+  const [ctrlGLauncherError, setCtrlGLauncherError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +150,74 @@ export function SettingsPanel({
       setCliBinaryMessage(text === 'Cancelled' ? 'Cancelled' : `Uninstall failed: ${text || 'unknown error'}`);
     } finally {
       setCliBinaryBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    ctrlGLauncherStatus()
+      .then((status) => {
+        if (cancelled || status === null) return;
+        setCtrlGLauncher(status);
+      })
+      .catch((error) => {
+        console.error('Failed to read Ctrl+G launcher status:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshCtrlGLauncherStatus = async () => {
+    try {
+      const status = await ctrlGLauncherStatus();
+      if (status !== null) setCtrlGLauncher(status);
+    } catch (error) {
+      console.error('Failed to refresh Ctrl+G launcher status:', error);
+    }
+  };
+
+  const handleInstallCtrlGLauncher = async () => {
+    setCtrlGLauncherBusy(true);
+    setCtrlGLauncherError(false);
+    setCtrlGLauncherMessage('');
+    try {
+      const result = await installCtrlGLauncher();
+      setCtrlGLauncherMessage(
+        result.alreadyDone
+          ? `Already installed in ${result.shellConfigPath}. Open a new terminal to use it.`
+          : `Installed in ${result.shellConfigPath}. Open a new terminal to use it.`,
+      );
+      await refreshCtrlGLauncherStatus();
+    } catch (error) {
+      const text = typeof error === 'string' ? error : (error as Error)?.message ?? '';
+      console.error('Failed to install Ctrl+G launcher:', error);
+      setCtrlGLauncherError(true);
+      setCtrlGLauncherMessage(`Install failed: ${text || 'unknown error'}`);
+    } finally {
+      setCtrlGLauncherBusy(false);
+    }
+  };
+
+  const handleUninstallCtrlGLauncher = async () => {
+    setCtrlGLauncherBusy(true);
+    setCtrlGLauncherError(false);
+    setCtrlGLauncherMessage('');
+    try {
+      const result = await uninstallCtrlGLauncher();
+      setCtrlGLauncherMessage(
+        result.alreadyDone
+          ? `Not installed in ${result.shellConfigPath}`
+          : `Uninstalled from ${result.shellConfigPath}. Open a new terminal to drop the binding.`,
+      );
+      await refreshCtrlGLauncherStatus();
+    } catch (error) {
+      const text = typeof error === 'string' ? error : (error as Error)?.message ?? '';
+      console.error('Failed to uninstall Ctrl+G launcher:', error);
+      setCtrlGLauncherError(true);
+      setCtrlGLauncherMessage(`Uninstall failed: ${text || 'unknown error'}`);
+    } finally {
+      setCtrlGLauncherBusy(false);
     }
   };
 
@@ -276,6 +357,80 @@ export function SettingsPanel({
             className={`min-h-5 text-xs ${cliBinaryError ? 'text-destructive' : 'text-muted-foreground'}`}
           >
             {cliBinaryMessage}
+          </p>
+        </div>
+
+        <Separator />
+        <div data-testid="settings-ctrl-g-launcher" className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-medium leading-none">Ctrl+G Shell Shortcut</h4>
+            <span
+              data-testid="settings-ctrl-g-launcher-state"
+              className={`rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                ctrlGLauncher.installed
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-muted text-muted-foreground'
+              }`}
+            >
+              {ctrlGLauncher.installed ? 'Installed' : 'Not installed'}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Binds <code className="font-mono text-xs">Ctrl+G</code> at the shell prompt to launch
+            Markdowner. Works in zsh and bash when you're at the prompt — useful while running
+            Claude Code, Codex, or any CLI tool from the terminal. (TUI apps that capture
+            keystrokes won't see Ctrl+G; press it from the shell.)
+          </p>
+          {ctrlGLauncher.shellConfigPath ? (
+            <div
+              data-testid="settings-ctrl-g-launcher-path"
+              className="min-w-0 overflow-hidden rounded bg-muted px-2 py-1.5"
+            >
+              <code className="block min-w-0 whitespace-pre-wrap break-all font-mono text-xs leading-5">
+                {ctrlGLauncher.shellConfigPath}
+                {ctrlGLauncher.targetAppBundle
+                  ? `  →  ${ctrlGLauncher.targetAppBundle}`
+                  : ''}
+              </code>
+            </div>
+          ) : null}
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleInstallCtrlGLauncher}
+              disabled={ctrlGLauncherBusy}
+              aria-label="Install Ctrl+G shell shortcut"
+              className="flex-1 sm:flex-none"
+            >
+              <Terminal />
+              {ctrlGLauncherBusy
+                ? ctrlGLauncher.installed
+                  ? 'Working…'
+                  : 'Installing…'
+                : ctrlGLauncher.installed
+                  ? 'Reinstall'
+                  : 'Install'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUninstallCtrlGLauncher}
+              disabled={ctrlGLauncherBusy || !ctrlGLauncher.installed}
+              aria-label="Uninstall Ctrl+G shell shortcut"
+              className="flex-1 sm:flex-none"
+            >
+              <Trash2 />
+              Uninstall
+            </Button>
+          </div>
+          <p
+            data-testid="settings-ctrl-g-launcher-status"
+            aria-live="polite"
+            className={`min-h-5 text-xs ${ctrlGLauncherError ? 'text-destructive' : 'text-muted-foreground'}`}
+          >
+            {ctrlGLauncherMessage}
           </p>
         </div>
 

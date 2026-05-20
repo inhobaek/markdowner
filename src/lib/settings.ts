@@ -103,6 +103,17 @@ export interface CliBinaryActionResult {
   alreadyDone: boolean;
 }
 
+export interface CtrlGLauncherStatus {
+  shellConfigPath: string;
+  targetAppBundle: string;
+  installed: boolean;
+}
+
+export interface CtrlGLauncherActionResult {
+  shellConfigPath: string;
+  alreadyDone: boolean;
+}
+
 export const CLI_BINARY_INSTALL_PATH = '/usr/local/bin/mdner';
 
 export const CLI_ALIAS_COMMAND =
@@ -314,6 +325,36 @@ export async function installCliBinary(): Promise<CliBinaryActionResult> {
 
 export async function uninstallCliBinary(): Promise<CliBinaryActionResult> {
   return invoke<CliBinaryActionResult>('uninstall_cli_binary');
+}
+
+/**
+ * Reads whether the Ctrl+G shell launcher is currently installed in the user's
+ * rc file. Returns null when the backend isn't reachable (tests, web preview)
+ * so callers can keep their default UI state instead of false-flagging.
+ */
+export async function ctrlGLauncherStatus(): Promise<CtrlGLauncherStatus | null> {
+  try {
+    const result = await invoke<CtrlGLauncherStatus | null | undefined>(
+      'ctrl_g_launcher_status',
+    );
+    if (!result || typeof result !== 'object') return null;
+    return {
+      shellConfigPath: typeof result.shellConfigPath === 'string' ? result.shellConfigPath : '',
+      targetAppBundle: typeof result.targetAppBundle === 'string' ? result.targetAppBundle : '',
+      installed: Boolean(result.installed),
+    };
+  } catch (error) {
+    console.error('Failed to read Ctrl+G launcher status:', error);
+    return null;
+  }
+}
+
+export async function installCtrlGLauncher(): Promise<CtrlGLauncherActionResult> {
+  return invoke<CtrlGLauncherActionResult>('install_ctrl_g_launcher');
+}
+
+export async function uninstallCtrlGLauncher(): Promise<CtrlGLauncherActionResult> {
+  return invoke<CtrlGLauncherActionResult>('uninstall_ctrl_g_launcher');
 }
 
 export async function diagnosticsStatus(): Promise<DiagnosticsLogStatus> {
