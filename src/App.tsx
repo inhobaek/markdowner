@@ -108,6 +108,11 @@ import {
   normalizeOpenDialogPaths,
 } from './lib/fileDialogOptions';
 import { getErrorMessage } from './lib/errors';
+import {
+  formatDiskReadError,
+  formatExternalChangeDetected,
+  formatExternalChangeVerificationError,
+} from './lib/externalChanges';
 import { nextCursorPositionFromStatistics } from './lib/cursorPosition';
 import {
   SETTINGS_TAB_ID,
@@ -2253,16 +2258,14 @@ export default function App() {
         return false;
       }
 
-      setExternalChangeMessage(
-        `Could not save '${snapshot.activeDocumentName ?? 'Untitled.md'}' because it changed on disk.`,
-      );
+      setExternalChangeMessage(formatExternalChangeDetected(snapshot.activeDocumentName));
       setShowExternalChangeActions(true);
       setExternalCompareSource(null);
       return true;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       setExternalChangeMessage(
-        `Could not verify external changes for '${snapshot.activeDocumentName ?? 'Untitled.md'}': ${reason}`,
+        formatExternalChangeVerificationError(snapshot.activeDocumentName, reason),
       );
       setShowExternalChangeActions(false);
       setExternalCompareSource(null);
@@ -2545,9 +2548,7 @@ export default function App() {
       setExternalCompareSource(source);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      setExternalChangeMessage(
-        `Could not read disk version of '${snapshot.activeDocumentName ?? 'Untitled.md'}': ${reason}`,
-      );
+      setExternalChangeMessage(formatDiskReadError(snapshot.activeDocumentName, reason));
       setShowExternalChangeActions(false);
     }
   };
