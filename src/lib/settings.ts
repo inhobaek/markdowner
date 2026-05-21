@@ -172,6 +172,18 @@ export const OUTLINE_ROW_SPACING_MAX = 8;
 export const EDITOR_WRAP_COLUMN_MIN = 40;
 export const EDITOR_WRAP_COLUMN_MAX = 240;
 
+export type EditorFontSizeAdjustmentKind = 'increase' | 'decrease';
+
+export type EditorFontSizeAdjustment = {
+  current: number;
+  next: number;
+};
+
+export type OutlinePanelSizing = {
+  outlineFontSize: number;
+  outlineRowSpacing: number;
+};
+
 function normalizeBoundedInteger(
   value: unknown,
   fallback: number,
@@ -181,6 +193,47 @@ function normalizeBoundedInteger(
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+export function normalizeEditorFontSize(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_SETTINGS.editorFontSize;
+  }
+  return Math.min(
+    EDITOR_FONT_SIZE_MAX,
+    Math.max(EDITOR_FONT_SIZE_MIN, Math.round(value)),
+  );
+}
+
+export function resolveEditorFontSizeAdjustment(
+  value: unknown,
+  kind: EditorFontSizeAdjustmentKind,
+): EditorFontSizeAdjustment {
+  const current = normalizeEditorFontSize(value);
+  const delta = kind === 'increase' ? 1 : -1;
+  return {
+    current,
+    next: Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, current + delta)),
+  };
+}
+
+export function resolveOutlinePanelSizing(
+  settings: Pick<Settings, 'outlineFontSize' | 'outlineRowSpacing'>,
+): OutlinePanelSizing {
+  return {
+    outlineFontSize: normalizeBoundedInteger(
+      settings.outlineFontSize,
+      DEFAULT_SETTINGS.outlineFontSize,
+      OUTLINE_FONT_SIZE_MIN,
+      OUTLINE_FONT_SIZE_MAX,
+    ),
+    outlineRowSpacing: normalizeBoundedInteger(
+      settings.outlineRowSpacing,
+      DEFAULT_SETTINGS.outlineRowSpacing,
+      OUTLINE_ROW_SPACING_MIN,
+      OUTLINE_ROW_SPACING_MAX,
+    ),
+  };
 }
 
 function normalizeCodeBlockTheme(value: unknown): CodeBlockTheme {
@@ -214,14 +267,7 @@ export function resolveCodeBlockTheme(settings: Settings, themeKind: ThemeKind):
 
 function normalizeSettings(value: Partial<Settings> | null | undefined): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...(value ?? {}) };
-  if (!Number.isFinite(merged.editorFontSize) || merged.editorFontSize <= 0) {
-    merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
-  } else {
-    merged.editorFontSize = Math.min(
-      EDITOR_FONT_SIZE_MAX,
-      Math.max(EDITOR_FONT_SIZE_MIN, Math.round(merged.editorFontSize)),
-    );
-  }
+  merged.editorFontSize = normalizeEditorFontSize(merged.editorFontSize);
   if (!Number.isFinite(merged.editorLineHeight) || merged.editorLineHeight <= 0) {
     merged.editorLineHeight = DEFAULT_SETTINGS.editorLineHeight;
   } else {
@@ -234,18 +280,7 @@ function normalizeSettings(value: Partial<Settings> | null | undefined): Setting
     );
     merged.editorLineHeight = Math.round(clamped * 10) / 10;
   }
-  merged.outlineFontSize = normalizeBoundedInteger(
-    merged.outlineFontSize,
-    DEFAULT_SETTINGS.outlineFontSize,
-    OUTLINE_FONT_SIZE_MIN,
-    OUTLINE_FONT_SIZE_MAX,
-  );
-  merged.outlineRowSpacing = normalizeBoundedInteger(
-    merged.outlineRowSpacing,
-    DEFAULT_SETTINGS.outlineRowSpacing,
-    OUTLINE_ROW_SPACING_MIN,
-    OUTLINE_ROW_SPACING_MAX,
-  );
+  Object.assign(merged, resolveOutlinePanelSizing(merged));
   if (typeof merged.editorLineWrap !== 'boolean') {
     merged.editorLineWrap = DEFAULT_SETTINGS.editorLineWrap;
   }

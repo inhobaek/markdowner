@@ -5,6 +5,9 @@ import {
   DEFAULT_SETTINGS,
   codeBlockThemeForThemeKind,
   getChangedSettingsKeys,
+  normalizeEditorFontSize,
+  resolveEditorFontSizeAdjustment,
+  resolveOutlinePanelSizing,
 } from './settings';
 
 describe('code block syntax highlighting settings', () => {
@@ -61,5 +64,37 @@ describe('settings change tracking', () => {
     };
 
     expect(getChangedSettingsKeys(current, next)).toEqual([]);
+  });
+});
+
+describe('settings numeric display helpers', () => {
+  it('normalizes editor font size with the persisted settings bounds', () => {
+    expect(normalizeEditorFontSize(Number.NaN)).toBe(DEFAULT_SETTINGS.editorFontSize);
+    expect(normalizeEditorFontSize(4)).toBe(8);
+    expect(normalizeEditorFontSize(52)).toBe(48);
+    expect(normalizeEditorFontSize(15.6)).toBe(16);
+  });
+
+  it('resolves editor font size adjustments from a normalized current value', () => {
+    expect(resolveEditorFontSizeAdjustment(48, 'increase')).toEqual({
+      current: 48,
+      next: 48,
+    });
+    expect(resolveEditorFontSizeAdjustment(Number.NaN, 'decrease')).toEqual({
+      current: DEFAULT_SETTINGS.editorFontSize,
+      next: DEFAULT_SETTINGS.editorFontSize - 1,
+    });
+  });
+
+  it('resolves outline panel sizing with defaults and bounds', () => {
+    expect(
+      resolveOutlinePanelSizing({
+        outlineFontSize: Number.NaN,
+        outlineRowSpacing: 20,
+      }),
+    ).toEqual({
+      outlineFontSize: DEFAULT_SETTINGS.outlineFontSize,
+      outlineRowSpacing: 8,
+    });
   });
 });

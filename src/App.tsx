@@ -154,18 +154,14 @@ import {
 } from './lib/modeCursor';
 import {
   DEFAULT_SETTINGS,
-  EDITOR_FONT_SIZE_MAX,
-  EDITOR_FONT_SIZE_MIN,
-  OUTLINE_FONT_SIZE_MAX,
-  OUTLINE_FONT_SIZE_MIN,
-  OUTLINE_ROW_SPACING_MAX,
-  OUTLINE_ROW_SPACING_MIN,
   type Settings,
   getChangedSettingsKeys,
   installCliLauncher,
   loadSettings,
   recordDiagnosticsEvent,
   resolveCodeBlockTheme,
+  resolveEditorFontSizeAdjustment,
+  resolveOutlinePanelSizing,
   saveSettings,
 } from './lib/settings';
 import { moveTab } from './lib/tabs';
@@ -1668,6 +1664,7 @@ export default function App() {
   const filteredWorkspaceTree = filterWorkspaceTree(workspaceTree, workspaceFilter);
   const filteringWorkspace = workspaceFilter.trim().length > 0;
   const workspaceTreeSignature = `${snapshot.rootDir ?? ''}\u0000${snapshot.workspaceDocuments.join('\u0000')}`;
+  const outlinePanelSizing = resolveOutlinePanelSizing(settings);
 
   const applySnapshot = (next: AppSnapshot, preserveDraft = false) => {
     startTransition(() => {
@@ -3237,15 +3234,9 @@ export default function App() {
       const editorFontSizeShortcut = resolveEditorFontSizeShortcut(event);
       if (editorFontSizeShortcut) {
         event.preventDefault();
-        const current = Number.isFinite(settings.editorFontSize) && settings.editorFontSize > 0
-          ? settings.editorFontSize
-          : DEFAULT_SETTINGS.editorFontSize;
-        const next = Math.min(
-          EDITOR_FONT_SIZE_MAX,
-          Math.max(
-            EDITOR_FONT_SIZE_MIN,
-            current + (editorFontSizeShortcut.kind === 'increase' ? 1 : -1),
-          ),
+        const { current, next } = resolveEditorFontSizeAdjustment(
+          settings.editorFontSize,
+          editorFontSizeShortcut.kind,
         );
         if (next !== current) {
           handleSettingsChange({ ...settings, editorFontSize: next });
@@ -3760,20 +3751,8 @@ export default function App() {
           displayFileName={displayFileName}
           displayWorkspacePath={displayWorkspacePath}
           outlineItems={outlineItems}
-          outlineFontSize={Math.min(
-            OUTLINE_FONT_SIZE_MAX,
-            Math.max(
-              OUTLINE_FONT_SIZE_MIN,
-              settings.outlineFontSize || DEFAULT_SETTINGS.outlineFontSize,
-            ),
-          )}
-          outlineRowSpacing={Math.min(
-            OUTLINE_ROW_SPACING_MAX,
-            Math.max(
-              OUTLINE_ROW_SPACING_MIN,
-              settings.outlineRowSpacing ?? DEFAULT_SETTINGS.outlineRowSpacing,
-            ),
-          )}
+          outlineFontSize={outlinePanelSizing.outlineFontSize}
+          outlineRowSpacing={outlinePanelSizing.outlineRowSpacing}
           onSelectOutlineItem={handleSelectOutlineItem}
           searchQuery={searchQuery}
           searchOptions={searchOptions}
