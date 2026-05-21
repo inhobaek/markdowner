@@ -85,6 +85,23 @@ type RestorePersistedDocumentTabsResult =
   | { kind: 'ready'; tabs: DocumentTab[] }
   | { kind: 'aborted' };
 
+type HydrateRestoredActiveDocumentTabInput<Snapshot extends DocumentTabSnapshotMetadataInput> = {
+  tabs: readonly DocumentTab[];
+  activeTab: DocumentTab | null;
+  openPath: (path: string) => Promise<Snapshot>;
+  shouldAbort?: () => boolean;
+};
+
+type HydrateRestoredActiveDocumentTabResult<Snapshot extends DocumentTabSnapshotMetadataInput> =
+  | {
+      kind: 'ready';
+      tabs: DocumentTab[];
+      activeTab: DocumentTab | null;
+      snapshot: Snapshot | null;
+      localDraft: string | null;
+    }
+  | { kind: 'aborted' };
+
 type UpsertDocumentTabInput = {
   currentTabs: readonly DocumentTab[];
   currentActiveId: string | null;
@@ -341,6 +358,58 @@ export async function restorePersistedDocumentTabs(
   }
 
   return { kind: 'ready', tabs };
+}
+
+export async function hydrateRestoredActiveDocumentTab<
+  Snapshot extends DocumentTabSnapshotMetadataInput,
+>(
+  input: HydrateRestoredActiveDocumentTabInput<Snapshot>,
+): Promise<HydrateRestoredActiveDocumentTabResult<Snapshot>> {
+  const tabs = [...input.tabs];
+  const activeTab = input.activeTab;
+
+  if (input.shouldAbort?.()) {
+    return { kind: 'aborted' };
+  }
+
+  if (activeTab?.kind !== 'document') {
+    return { kind: 'ready', tabs, activeTab, snapshot: null, localDraft: null };
+  }
+
+  if (activeTab.missing) {
+    return { kind: 'ready', tabs, activeTab, snapshot: null, localDraft: '' };
+  }
+
+  if (!activeTab.path) {
+    return { kind: 'ready', tabs, activeTab, snapshot: null, localDraft: null };
+  }
+
+  try {
+    const snapshot = await input.openPath(activeTab.path);
+    if (input.shouldAbort?.()) {
+      return { kind: 'aborted' };
+    }
+    return {
+      kind: 'ready',
+      tabs,
+      activeTab,
+      snapshot,
+      localDraft: snapshot.activeDocumentSource ?? '',
+    };
+  } catch {
+    if (input.shouldAbort?.()) {
+      return { kind: 'aborted' };
+    }
+    const nextTabs = markDocumentTabMissing(tabs, activeTab.id);
+    const nextActiveTab = nextTabs.find((tab) => tab.id === activeTab.id) ?? null;
+    return {
+      kind: 'ready',
+      tabs: nextTabs,
+      activeTab: nextActiveTab,
+      snapshot: null,
+      localDraft: '',
+    };
+  }
 }
 
 export function upsertDocumentTab(input: UpsertDocumentTabInput): UpsertDocumentTabResult {

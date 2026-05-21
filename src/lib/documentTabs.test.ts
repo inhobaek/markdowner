@@ -10,6 +10,7 @@ import {
   documentTabMetadataFromSnapshot,
   findDocumentTabByPath,
   generateDocumentTabId,
+  hydrateRestoredActiveDocumentTab,
   isDocumentTabDirty,
   markDocumentTabMissing,
   mergeRestoredDocumentTabs,
@@ -403,6 +404,121 @@ describe('restorePersistedDocumentTabs', () => {
       },
       createTabId: () => 'unused',
       displayNameForPath: (path) => path.split('/').pop() ?? path,
+      shouldAbort: () => cancelled,
+    });
+
+    expect(result).toEqual({ kind: 'aborted' });
+  });
+});
+
+describe('hydrateRestoredActiveDocumentTab', () => {
+  it('opens the restored active document and returns its live draft', async () => {
+    const active = documentTab({
+      id: 'active',
+      path: '/tmp/active.md',
+      name: 'active.md',
+      source: 'stale',
+      draft: 'stale',
+    });
+    const other = documentTab({
+      id: 'other',
+      path: '/tmp/other.md',
+    });
+    const snapshot = {
+      activeDocumentPath: '/tmp/active.md',
+      activeDocumentName: 'active.md',
+      activeDocumentSource: '# Active',
+    };
+
+    await expect(
+      hydrateRestoredActiveDocumentTab({
+        tabs: [active, other],
+        activeTab: active,
+        openPath: async () => snapshot,
+      }),
+    ).resolves.toEqual({
+      kind: 'ready',
+      tabs: [active, other],
+      activeTab: active,
+      snapshot,
+      localDraft: '# Active',
+    });
+  });
+
+  it('marks the restored active document missing when it cannot be reopened', async () => {
+    const active = documentTab({
+      id: 'active',
+      path: '/tmp/missing.md',
+      name: 'missing.md',
+      source: 'stale',
+      draft: 'stale draft',
+    });
+    const other = documentTab({
+      id: 'other',
+      path: '/tmp/other.md',
+    });
+
+    const missingActive = markDocumentTabMissing([active], 'active')[0];
+
+    await expect(
+      hydrateRestoredActiveDocumentTab({
+        tabs: [active, other],
+        activeTab: active,
+        openPath: async () => {
+          throw new Error('not found');
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'ready',
+      tabs: [missingActive, other],
+      activeTab: missingActive,
+      snapshot: null,
+      localDraft: '',
+    });
+  });
+
+  it('keeps missing restored active tabs on an empty local draft without reopening', async () => {
+    const active = documentTab({
+      id: 'active',
+      path: '/tmp/missing.md',
+      missing: true,
+    });
+
+    await expect(
+      hydrateRestoredActiveDocumentTab({
+        tabs: [active],
+        activeTab: active,
+        openPath: async () => {
+          throw new Error('should not open missing tabs');
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'ready',
+      tabs: [active],
+      activeTab: active,
+      snapshot: null,
+      localDraft: '',
+    });
+  });
+
+  it('aborts without returning a stale snapshot when cancellation is requested', async () => {
+    const active = documentTab({
+      id: 'active',
+      path: '/tmp/active.md',
+    });
+    let cancelled = false;
+
+    const result = await hydrateRestoredActiveDocumentTab({
+      tabs: [active],
+      activeTab: active,
+      openPath: async () => {
+        cancelled = true;
+        return {
+          activeDocumentPath: '/tmp/active.md',
+          activeDocumentName: 'active.md',
+          activeDocumentSource: '# Active',
+        };
+      },
       shouldAbort: () => cancelled,
     });
 

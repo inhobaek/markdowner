@@ -133,6 +133,7 @@ import {
 import {
   findDocumentTabByPath,
   generateDocumentTabId,
+  hydrateRestoredActiveDocumentTab,
   isDocumentTabDirty,
   markDocumentTabMissing,
   mergeRestoredDocumentTabs,
@@ -1836,34 +1837,31 @@ export default function App() {
           });
           let { mergedTabs } = restoredMerge;
           const { nextActiveId, nextActiveTab } = restoredMerge;
-          let nextSnapshot: AppSnapshot | null = null;
-          let nextLocalDraft: string | null = null;
-
-          if (nextActiveTab?.kind === 'document' && nextActiveTab.path && !nextActiveTab.missing) {
-            try {
-              nextSnapshot = await openDocument(nextActiveTab.path);
-              nextLocalDraft = nextSnapshot.activeDocumentSource ?? '';
-            } catch {
-              mergedTabs = mergedTabs.map((tab) =>
-                tab.id === nextActiveTab.id
-                  ? { ...tab, missing: true, source: '', draft: '' }
-                  : tab,
-              );
-              nextLocalDraft = '';
-            }
-          } else if (nextActiveTab?.kind === 'document' && nextActiveTab.missing) {
-            nextLocalDraft = '';
-          }
+          const activeHydration = await hydrateRestoredActiveDocumentTab({
+            tabs: mergedTabs,
+            activeTab: nextActiveTab,
+            openPath: openDocument,
+            shouldAbort: () => cancelled,
+          });
+          if (activeHydration.kind === 'aborted' || cancelled) return;
+          mergedTabs = activeHydration.tabs;
+          const hydratedActiveTab = activeHydration.activeTab;
+          const nextSnapshot = activeHydration.snapshot;
+          const nextLocalDraft = activeHydration.localDraft;
 
           tabsRef.current = mergedTabs;
           activeTabIdRef.current = nextActiveId;
           // Arm the startup focus + caret restore. The follow-up effect
           // consumes this once the editor surface for the picked tab is
           // ready (it sees an empty doc + path mismatch otherwise).
-          if (nextActiveTab?.kind === 'document' && nextActiveTab.path && !nextActiveTab.missing) {
+          if (
+            hydratedActiveTab?.kind === 'document' &&
+            hydratedActiveTab.path &&
+            !hydratedActiveTab.missing
+          ) {
             startupRestoreRef.current = {
-              path: nextActiveTab.path,
-              location: persistedTabs.cursorPositions[nextActiveTab.path] ?? null,
+              path: hydratedActiveTab.path,
+              location: persistedTabs.cursorPositions[hydratedActiveTab.path] ?? null,
             };
           }
           startTransition(() => {
