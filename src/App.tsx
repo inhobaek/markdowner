@@ -178,7 +178,11 @@ import {
   isOpenLinkClick,
   openMarkdownLink,
 } from './lib/linkOpener';
-import { matchesShortcut, usesCommandModifier } from './lib/keyboardShortcuts';
+import {
+  matchesShortcut,
+  resolveModeChord,
+  usesCommandModifier,
+} from './lib/keyboardShortcuts';
 import { parseMarkdownOutline, type OutlineItem } from './lib/outline';
 import { syncScrollPosition } from './lib/scrollSync';
 import {
@@ -3050,30 +3054,16 @@ export default function App() {
       // second Cmd held). This must run before single-key handlers so the
       // second stroke is not consumed by, e.g., the Cmd+W close-window shortcut.
       if (chordPrefixActiveRef.current) {
-        const key = event.key.toLowerCase();
-        if (key === 'meta' || key === 'control' || key === 'shift' || key === 'alt') {
+        const chordResolution = resolveModeChord(event);
+        if (chordResolution.kind === 'pendingModifier') {
           return;
         }
         clearChordPrefix();
-        if (event.altKey || event.shiftKey) {
+        if (chordResolution.kind === 'cancel') {
           return;
         }
-        if (key === 'w') {
-          event.preventDefault();
-          void handleSetMode('Wysiwyg');
-          return;
-        }
-        if (key === 'e') {
-          event.preventDefault();
-          void handleSetMode('Editor');
-          return;
-        }
-        if (key === 's') {
-          event.preventDefault();
-          void handleSetMode('SplitView');
-          return;
-        }
-        // Unknown chord completion — drop quietly.
+        event.preventDefault();
+        void handleSetMode(chordResolution.mode);
         return;
       }
 

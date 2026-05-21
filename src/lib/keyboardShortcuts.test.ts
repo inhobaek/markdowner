@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { matchesShortcut, usesCommandModifier } from './keyboardShortcuts';
+import {
+  matchesShortcut,
+  resolveModeChord,
+  usesCommandModifier,
+} from './keyboardShortcuts';
 
 function shortcutEvent(overrides: Partial<KeyboardEvent> = {}) {
   return {
@@ -46,5 +50,34 @@ describe('matchesShortcut', () => {
         shift: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe('resolveModeChord', () => {
+  it.each([
+    ['w', 'Wysiwyg'],
+    ['E', 'Editor'],
+    ['s', 'SplitView'],
+  ] as const)('maps %s to %s mode', (key, mode) => {
+    expect(resolveModeChord(shortcutEvent({ key }))).toEqual({ kind: 'mode', mode });
+  });
+
+  it('keeps the chord pending while only modifier keys are pressed', () => {
+    expect(resolveModeChord(shortcutEvent({ key: 'Meta' }))).toEqual({
+      kind: 'pendingModifier',
+    });
+    expect(resolveModeChord(shortcutEvent({ key: 'Control' }))).toEqual({
+      kind: 'pendingModifier',
+    });
+  });
+
+  it('cancels unknown or shifted chord completions', () => {
+    expect(resolveModeChord(shortcutEvent({ key: 'x' }))).toEqual({ kind: 'cancel' });
+    expect(resolveModeChord(shortcutEvent({ key: 'w', shiftKey: true }))).toEqual({
+      kind: 'cancel',
+    });
+    expect(resolveModeChord(shortcutEvent({ key: 'w', altKey: true }))).toEqual({
+      kind: 'cancel',
+    });
   });
 });
