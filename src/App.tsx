@@ -102,6 +102,15 @@ import {
 import { getErrorMessage } from './lib/errors';
 import { nextCursorPositionFromStatistics } from './lib/cursorPosition';
 import {
+  SETTINGS_TAB_ID,
+  createDocumentTab,
+  createSettingsTab,
+  findDocumentTabByPath,
+  generateDocumentTabId,
+  isDocumentTabDirty,
+  type DocumentTab,
+} from './lib/documentTabs';
+import {
   centerSourceEditorLine,
   centerTiptapEditorLine,
   moveLineBoundaryInProseMirror,
@@ -225,30 +234,6 @@ const MENU_COMMAND_QUIT_APP = 'quit-app';
 const STARTUP_OPEN_TABS_RETRY_MS = 100;
 
 type CloseTarget = 'window' | 'app';
-
-// One open tab. The active tab's path/name/source are also reflected in
-// the Rust-side AppSnapshot; tabs adds the rest of the open documents and
-// preserves their unsaved drafts across switches.
-//
-// `kind: 'settings'` is a special UI tab that renders SettingsPanel instead of
-// the editor surface. It never round-trips through Rust, so its path/source
-// fields stay empty.
-type DocumentTabKind = 'document' | 'settings';
-
-type DocumentTab = {
-  id: string;
-  kind: DocumentTabKind;
-  path: string | null;
-  name: string;
-  source: string;
-  draft: string;
-  /** True when the tab references a file path that does not exist on disk. */
-  missing: boolean;
-};
-
-const SETTINGS_TAB_ID = '__markdowner_settings__';
-const SETTINGS_TAB_NAME = 'Settings';
-
 type ThemeMode = 'system' | 'manual';
 const CHORD_PREFIX_TIMEOUT_MS = 1500;
 // Debounce window for serializing the WYSIWYG ProseMirror tree into markdown.
@@ -488,23 +473,6 @@ export default function App() {
   // was on screen).
   const preSettingsDocTabIdRef = useRef<string | null>(null);
 
-  const generateTabId = () => {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
-    }
-    return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  };
-
-  // Find a tab matching the given path; null path means untitled. Only
-  // considers document tabs — the settings tab has path=null but is not a
-  // valid match for "find me the untitled document."
-  const findTabByPath = (path: string | null): DocumentTab | undefined => {
-    if (path === null) {
-      return tabs.find((tab) => tab.kind === 'document' && tab.path === null);
-    }
-    return tabs.find((tab) => tab.kind === 'document' && tab.path === path);
-  };
-
   // Stash the live editor draft into the active tab so a later switch back
   // restores the user's in-flight edits. No-op when the active tab is a
   // non-document surface (settings) since it has no editor draft to preserve.
@@ -548,7 +516,7 @@ export default function App() {
     const replaceAt = (index: number) => {
       newTabs = current.map((tab, i) =>
         i === index
-          ? { ...tab, kind: 'document', path, name, source, draft: source, missing: false }
+          ? createDocumentTab({ id: tab.id, path, name, source })
           : tab,
       );
       newActiveId = newTabs[index].id;
@@ -576,15 +544,12 @@ export default function App() {
     }
 
     if (newActiveId === null) {
-      const newTab: DocumentTab = {
-        id: generateTabId(),
-        kind: 'document',
+      const newTab = createDocumentTab({
+        id: generateDocumentTabId(),
         path,
         name,
         source,
-        draft: source,
-        missing: false,
-      };
+      });
       newTabs = [...current, newTab];
       newActiveId = newTab.id;
     }
@@ -619,7 +584,7 @@ export default function App() {
       setTabs((prev) =>
         prev.map((tab) =>
           tab.id === activeTabId && tab.kind === 'document'
-            ? { ...tab, path, name, source, draft: source, missing: false }
+            ? createDocumentTab({ id: tab.id, path, name, source })
             : tab,
         ),
       );
@@ -1043,7 +1008,7 @@ export default function App() {
   const handleSelectSearchMatch = useEffectEvent(
     async (file: SearchResultFile, match: SearchResultMatch | undefined) => {
       const targetMatch = match ?? file.matches[0];
-      const existing = findTabByPath(file.path);
+      const existing = findDocumentTabByPath(tabs, file.path);
       if (existing) {
         await switchToTab(existing.id);
       } else {
@@ -1828,11 +1793,8 @@ export default function App() {
   // Both sides are normalized to a single trailing newline so the WYSIWYG
   // TrailingNode's extra empty paragraph (which exists only in the view, not
   // on disk) doesn't flag a freshly-loaded document as dirty.
-  const tabIsDirty = (tab: DocumentTab) => {
-    if (tab.kind !== 'document') return false;
-    const live = tab.id === activeTabId ? localDraft : tab.draft;
-    return normalizeFinalNewline(live) !== normalizeFinalNewline(tab.source);
-  };
+  const tabIsDirty = (tab: DocumentTab) =>
+    isDocumentTabDirty(tab, { activeTabId, localDraft });
   const activeTab = activeTabId
     ? tabs.find((tab) => tab.id === activeTabId) ?? null
     : null;
@@ -2016,26 +1978,24 @@ export default function App() {
           for (const path of persistedTabs.openTabs) {
             try {
               const opened = await openDocument(path);
-              restored.push({
-                id: generateTabId(),
-                kind: 'document',
-                path: opened.activeDocumentPath ?? path,
-                name: opened.activeDocumentName ?? displayFileName(path),
-                source: opened.activeDocumentSource ?? '',
-                draft: opened.activeDocumentSource ?? '',
-                missing: false,
-              });
+              restored.push(
+                createDocumentTab({
+                  id: generateDocumentTabId(),
+                  path: opened.activeDocumentPath ?? path,
+                  name: opened.activeDocumentName ?? displayFileName(path),
+                  source: opened.activeDocumentSource ?? '',
+                }),
+              );
             } catch {
               // File is gone — keep the tab as a missing-file placeholder.
-              restored.push({
-                id: generateTabId(),
-                kind: 'document',
-                path,
-                name: displayFileName(path),
-                source: '',
-                draft: '',
-                missing: true,
-              });
+              restored.push(
+                createDocumentTab({
+                  id: generateDocumentTabId(),
+                  path,
+                  name: displayFileName(path),
+                  missing: true,
+                }),
+              );
             }
           }
           if (cancelled) return;
@@ -2529,7 +2489,7 @@ export default function App() {
   const handleNewDocument = async () => {
     // If an Untitled tab already exists, just switch to it instead of stacking
     // multiple Untitled drafts (Rust only models a single untitled document).
-    const existingUntitled = findTabByPath(null);
+    const existingUntitled = findDocumentTabByPath(tabs, null);
     if (existingUntitled) {
       await switchToTab(existingUntitled.id);
       focusActiveEditor();
@@ -2573,7 +2533,7 @@ export default function App() {
 
     // Single-path shortcut: just switch if it's already open.
     if (paths.length === 1) {
-      const existing = findTabByPath(paths[0]);
+      const existing = findDocumentTabByPath(tabs, paths[0]);
       if (existing) {
         await switchToTab(existing.id);
         focusActiveEditor();
@@ -2596,22 +2556,19 @@ export default function App() {
 
       for (const path of paths) {
         const existing =
-          findTabByPath(path) ?? additions.find((tab) => tab.path === path);
+          findDocumentTabByPath(tabs, path) ?? additions.find((tab) => tab.path === path);
         if (existing) {
           lastActiveId = existing.id;
           continue;
         }
         const next = await openDocument(path);
         if (isEditorOpStale(token)) return;
-        const tab: DocumentTab = {
-          id: generateTabId(),
-          kind: 'document',
+        const tab = createDocumentTab({
+          id: generateDocumentTabId(),
           path: next.activeDocumentPath ?? path,
           name: next.activeDocumentName ?? path,
           source: next.activeDocumentSource ?? '',
-          draft: next.activeDocumentSource ?? '',
-          missing: false,
-        };
+        });
         additions.push(tab);
         lastSnapshot = next;
         lastActiveId = tab.id;
@@ -2991,7 +2948,7 @@ export default function App() {
   };
 
   const handleOpenWorkspaceDocument = async (path: string) => {
-    const existing = findTabByPath(path);
+    const existing = findDocumentTabByPath(tabs, path);
     if (existing) {
       await switchToTab(existing.id);
       focusActiveEditor();
@@ -3016,7 +2973,7 @@ export default function App() {
   };
 
   const handleOpenRecentDocument = async (path: string) => {
-    const existing = findTabByPath(path);
+    const existing = findDocumentTabByPath(tabs, path);
     if (existing) {
       await switchToTab(existing.id);
       focusActiveEditor();
@@ -3183,15 +3140,7 @@ export default function App() {
     // exactly as-is so closing settings can restore it without re-opening.
     stashActiveTabDraft();
     preSettingsDocTabIdRef.current = activeTabId;
-    const settingsTab: DocumentTab = {
-      id: SETTINGS_TAB_ID,
-      kind: 'settings',
-      path: null,
-      name: SETTINGS_TAB_NAME,
-      source: '',
-      draft: '',
-      missing: false,
-    };
+    const settingsTab = createSettingsTab();
     startTransition(() => {
       setTabs((prev) => [...prev, settingsTab]);
       setActiveTabId(SETTINGS_TAB_ID);
