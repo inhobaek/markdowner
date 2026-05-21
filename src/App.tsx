@@ -140,6 +140,10 @@ import {
   replaceWysiwygTextMatches,
   selectWysiwygFindMatch,
 } from './lib/wysiwygFind';
+import {
+  focusCodeBlockLanguageSelectorOnArrowUp,
+  shouldSuppressSyntheticImeEnter,
+} from './lib/wysiwygKeyboard';
 
 const EMPTY_SNAPSHOT: AppSnapshot = {
   rootDir: null,
@@ -2168,44 +2172,19 @@ export default function App() {
         // `document.createEvent("Event")` — it is NOT a KeyboardEvent — so
         // `event instanceof KeyboardEvent` reliably distinguishes it from a
         // real Enter press regardless of how Tauri reports `isTrusted`.
-        if (
-          event.key === 'Enter' &&
-          !(event instanceof KeyboardEvent) &&
-          (isWysiwygComposingRef.current ||
-            (view as { composing?: boolean }).composing ||
-            Date.now() - lastWysiwygCompositionEndAtRef.current < 500)
-        ) {
+        if (shouldSuppressSyntheticImeEnter(event, {
+          isComposing: isWysiwygComposingRef.current,
+          viewComposing: (view as { composing?: boolean }).composing,
+          lastCompositionEndAt: lastWysiwygCompositionEndAtRef.current,
+        })) {
           return true;
         }
         // ArrowUp at the very first cursor position of a code_block parks the
         // focus on the language selector instead of stepping straight past it.
         // ArrowDown when the selector itself isn't focused is left to the
         // browser — the selector lives outside ProseMirror's editable region.
-        if (
-          event.key === 'ArrowUp' &&
-          !event.altKey &&
-          !event.metaKey &&
-          !event.ctrlKey &&
-          !event.shiftKey
-        ) {
-          const { $from } = view.state.selection;
-          const parent = $from.parent;
-          if (parent && parent.type && parent.type.name === 'codeBlock') {
-            const isAtFirstLine = $from.parentOffset === 0
-              || !parent.textContent.slice(0, $from.parentOffset).includes('\n');
-            if (isAtFirstLine) {
-              const nodePos = $from.before($from.depth);
-              const dom = view.nodeDOM?.(nodePos) as HTMLElement | null;
-              const trigger = dom?.querySelector?.('[data-code-block-language-select]') as
-                | HTMLButtonElement
-                | null;
-              if (trigger && !trigger.disabled) {
-                event.preventDefault();
-                trigger.focus();
-                return true;
-              }
-            }
-          }
+        if (focusCodeBlockLanguageSelectorOnArrowUp(view, event)) {
+          return true;
         }
         if (
           event.key !== 'PageUp' &&
