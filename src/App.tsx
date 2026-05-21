@@ -141,6 +141,7 @@ import { createSourceLinkClickExtension } from './lib/sourceLinkClick';
 import {
   buildSourceLineStartOffsets,
   clampSourceOffset,
+  countLiteralOccurrencesBefore,
   normalizeFinalNewline,
   sourceOffsetForLine,
 } from './lib/sourceText';
@@ -407,21 +408,6 @@ function mapRenderedTextOffsetToSourceOffset(
   }
 
   return clampSourceOffset(rawStart + renderedOffset, source.length);
-}
-
-function countLiteralOccurrencesBefore(source: string, needle: string, endOffset: number) {
-  if (needle.length === 0) {
-    return 0;
-  }
-
-  let count = 0;
-  let index = source.indexOf(needle);
-  while (index >= 0 && index < endOffset) {
-    count += 1;
-    index = source.indexOf(needle, index + needle.length);
-  }
-
-  return count;
 }
 
 type EditorModeOption = {

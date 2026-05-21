@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSourceLineStartOffsets,
   clampSourceOffset,
+  countLiteralOccurrencesBefore,
   normalizeFinalNewline,
   sourceOffsetForLine,
 } from './sourceText';
@@ -40,5 +41,17 @@ describe('normalizeFinalNewline', () => {
     expect(normalizeFinalNewline('alpha')).toBe('alpha\n');
     expect(normalizeFinalNewline('alpha\n')).toBe('alpha\n');
     expect(normalizeFinalNewline('alpha\n\n\n')).toBe('alpha\n');
+  });
+});
+
+describe('countLiteralOccurrencesBefore', () => {
+  it('counts non-overlapping literal occurrences before the end offset', () => {
+    expect(countLiteralOccurrencesBefore('alpha beta alpha alpha', 'alpha', 11)).toBe(1);
+    expect(countLiteralOccurrencesBefore('alpha beta alpha alpha', 'alpha', 17)).toBe(2);
+    expect(countLiteralOccurrencesBefore('aaaa', 'aa', 4)).toBe(2);
+  });
+
+  it('returns zero for empty needles', () => {
+    expect(countLiteralOccurrencesBefore('alpha', '', 5)).toBe(0);
   });
 });
