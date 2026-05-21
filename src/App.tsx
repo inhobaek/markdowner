@@ -129,7 +129,13 @@ import {
   applyImportedStylesheet,
   applyThemeSelection,
 } from './lib/themeScope';
-import { WINDOW_TITLE, buildWindowTitle, formatThemeLabel } from './lib/shellDisplay';
+import {
+  EDITOR_MODE_OPTIONS,
+  WINDOW_TITLE,
+  buildWindowTitle,
+  formatEditorMode,
+  formatThemeLabel,
+} from './lib/shellDisplay';
 import {
   findClickedAnchorHref,
   isOpenLinkClick,
@@ -252,19 +258,6 @@ const CHORD_PREFIX_TIMEOUT_MS = 1500;
 // switch, tab stash, close prompts) to keep correctness without the cost.
 const WYSIWYG_FLUSH_DEBOUNCE_MS = 120;
 
-type EditorModeOption = {
-  mode: EditorMode;
-  label: string;
-  shortcutSymbol: string;
-  shortcutText: string;
-  ariaKeyshortcuts: string;
-};
-
-const EDITOR_MODE_OPTIONS: EditorModeOption[] = [
-  { mode: 'Wysiwyg', label: 'WYSIWYG', shortcutSymbol: '⌥1', shortcutText: 'Opt+1', ariaKeyshortcuts: 'Alt+Digit1' },
-  { mode: 'Editor', label: 'Editor', shortcutSymbol: '⌥2', shortcutText: 'Opt+2', ariaKeyshortcuts: 'Alt+Digit2' },
-  { mode: 'SplitView', label: 'Split View', shortcutSymbol: '⌥3', shortcutText: 'Opt+3', ariaKeyshortcuts: 'Alt+Digit3' },
-];
 const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as Array<keyof Settings>;
 
 const sourceFocusModeExtension = EditorView.theme({
@@ -286,18 +279,6 @@ const sourceTypewriterModeExtension = EditorView.theme({
     paddingBottom: '35vh',
   },
 });
-
-const EDITOR_MODE_LABELS: Record<EditorMode, string> = EDITOR_MODE_OPTIONS.reduce(
-  (acc, option) => {
-    acc[option.mode] = option.label;
-    return acc;
-  },
-  {} as Record<EditorMode, string>,
-);
-
-function formatEditorMode(mode: EditorMode): string {
-  return EDITOR_MODE_LABELS[mode] ?? mode;
-}
 
 function centerSourceEditorLine(view: EditorView) {
   const scrollElement = view.scrollDOM;
