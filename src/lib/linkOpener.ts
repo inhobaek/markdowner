@@ -54,3 +54,19 @@ export function isOpenLinkClick(event: { metaKey: boolean; ctrlKey: boolean }): 
   if (typeof navigator === 'undefined') return event.metaKey || event.ctrlKey;
   return navigator.platform.toLowerCase().includes('mac') ? event.metaKey : event.ctrlKey;
 }
+
+export function findClickedAnchorHref(
+  target: EventTarget | null,
+  container: Element | null = null,
+): string | null {
+  const element =
+    typeof Element !== 'undefined' && target instanceof Element
+      ? target
+      : typeof Node !== 'undefined' && target instanceof Node
+        ? target.parentElement
+        : null;
+  const anchor = element?.closest('a');
+  if (!anchor) return null;
+  if (container && !container.contains(anchor)) return null;
+  return anchor.getAttribute('href') || null;
+}

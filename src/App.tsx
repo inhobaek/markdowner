@@ -127,7 +127,11 @@ import {
   MARKDOWN_CONTENT_SCOPE_CLASS,
   scopeImportedStylesheet,
 } from './lib/themeScope';
-import { isOpenLinkClick, openMarkdownLink } from './lib/linkOpener';
+import {
+  findClickedAnchorHref,
+  isOpenLinkClick,
+  openMarkdownLink,
+} from './lib/linkOpener';
 import { createSourceLinkClickExtension } from './lib/sourceLinkClick';
 import {
   findWysiwygTextMatches,
@@ -1850,24 +1854,21 @@ export default function App() {
 
   const handleSplitPreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (currentMode !== 'SplitView') return;
-    if (!(event.target instanceof Element)) return;
 
     // Clicks on rendered links open the target — markdown files in this
     // editor, everything else in the OS default handler. Plain text in the
     // preview still focuses the corresponding source line via the rest of
     // this handler.
-    const anchor = event.target.closest('a') as HTMLAnchorElement | null;
-    if (anchor && event.currentTarget.contains(anchor)) {
-      const href = anchor.getAttribute('href');
-      if (href) {
-        event.preventDefault();
-        void openMarkdownLink(href, snapshot.activeDocumentPath).catch(() => {
-          // Ignored — user can also open via the source editor.
-        });
-        return;
-      }
+    const href = findClickedAnchorHref(event.target, event.currentTarget);
+    if (href) {
+      event.preventDefault();
+      void openMarkdownLink(href, snapshot.activeDocumentPath).catch(() => {
+        // Ignored — user can also open via the source editor.
+      });
+      return;
     }
 
+    if (!(event.target instanceof Element)) return;
     const sourceLineElement = event.target.closest<HTMLElement>('[data-source-line]');
     if (!sourceLineElement || !event.currentTarget.contains(sourceLineElement)) return;
 
@@ -2148,10 +2149,7 @@ export default function App() {
       // inside the link text to edit it.
       handleClick: (_view: any, _pos: number, event: MouseEvent) => {
         if (!isOpenLinkClick(event)) return false;
-        const target = event.target as Element | null;
-        const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
-        if (!anchor) return false;
-        const href = anchor.getAttribute('href');
+        const href = findClickedAnchorHref(event.target);
         if (!href) return false;
         event.preventDefault();
         void openMarkdownLink(href, activeDocumentPathRef.current).catch(() => {
