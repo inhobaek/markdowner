@@ -198,13 +198,12 @@ import {
 } from './lib/workspaceTree';
 import {
   SIDEBAR_DEFAULT_WIDTH,
-  SIDEBAR_KEYBOARD_PAGE_STEP,
-  SIDEBAR_KEYBOARD_STEP,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
-  clampSidebarWidth,
+  nextSidebarWidthFromKey,
   readSidebarState,
   readSidebarWidth,
+  sidebarWidthFromPointerX,
   writeSidebarState,
   writeSidebarWidth,
 } from './lib/sidebarState';
@@ -1237,42 +1236,17 @@ export default function App() {
 
   const handleSidebarResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!isSidebarOpen) return;
-    let delta = 0;
-    let absolute: number | null = null;
-    switch (event.key) {
-      case 'ArrowLeft':
-        delta = -SIDEBAR_KEYBOARD_STEP;
-        break;
-      case 'ArrowRight':
-        delta = SIDEBAR_KEYBOARD_STEP;
-        break;
-      case 'PageUp':
-        delta = -SIDEBAR_KEYBOARD_PAGE_STEP;
-        break;
-      case 'PageDown':
-        delta = SIDEBAR_KEYBOARD_PAGE_STEP;
-        break;
-      case 'Home':
-        absolute = SIDEBAR_MIN_WIDTH;
-        break;
-      case 'End':
-        absolute = SIDEBAR_MAX_WIDTH;
-        break;
-      default:
-        return;
-    }
+    const nextWidth = nextSidebarWidthFromKey(sidebarWidth, event.key);
+    if (nextWidth === null) return;
     event.preventDefault();
-    setSidebarWidth((current) =>
-      clampSidebarWidth(absolute !== null ? absolute : current + delta),
-    );
+    setSidebarWidth((current) => nextSidebarWidthFromKey(current, event.key) ?? current);
   };
 
   useEffect(() => {
     if (!isResizingSidebar) return;
 
     const handleMove = (event: PointerEvent) => {
-      const next = clampSidebarWidth(event.clientX - 48); // subtract ActivityBar width
-      setSidebarWidth(next);
+      setSidebarWidth(sidebarWidthFromPointerX(event.clientX));
     };
 
     const handleUp = () => {

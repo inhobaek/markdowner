@@ -7,8 +7,10 @@ import {
   SIDEBAR_STATE_KEY,
   SIDEBAR_WIDTH_KEY,
   clampSidebarWidth,
+  nextSidebarWidthFromKey,
   readSidebarState,
   readSidebarWidth,
+  sidebarWidthFromPointerX,
   writeSidebarState,
   writeSidebarWidth,
 } from './sidebarState';
@@ -57,5 +59,21 @@ describe('sidebar state persistence', () => {
 
     writeSidebarWidth(320);
     expect(window.localStorage.getItem(SIDEBAR_WIDTH_KEY)).toBe('320');
+  });
+
+  it('calculates sidebar width from pointer position relative to the activity bar', () => {
+    expect(sidebarWidthFromPointerX(360)).toBe(312);
+    expect(sidebarWidthFromPointerX(10)).toBe(SIDEBAR_MIN_WIDTH);
+    expect(sidebarWidthFromPointerX(900)).toBe(SIDEBAR_MAX_WIDTH);
+  });
+
+  it('calculates keyboard resize targets and ignores unrelated keys', () => {
+    expect(nextSidebarWidthFromKey(280, 'ArrowRight')).toBe(288);
+    expect(nextSidebarWidthFromKey(280, 'ArrowLeft')).toBe(272);
+    expect(nextSidebarWidthFromKey(280, 'PageDown')).toBe(312);
+    expect(nextSidebarWidthFromKey(280, 'PageUp')).toBe(248);
+    expect(nextSidebarWidthFromKey(280, 'Home')).toBe(SIDEBAR_MIN_WIDTH);
+    expect(nextSidebarWidthFromKey(280, 'End')).toBe(SIDEBAR_MAX_WIDTH);
+    expect(nextSidebarWidthFromKey(280, 'Escape')).toBeNull();
   });
 });

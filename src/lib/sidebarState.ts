@@ -5,6 +5,7 @@ export const SIDEBAR_MAX_WIDTH = 720;
 export const SIDEBAR_DEFAULT_WIDTH = 280;
 export const SIDEBAR_KEYBOARD_STEP = 8;
 export const SIDEBAR_KEYBOARD_PAGE_STEP = 32;
+export const ACTIVITY_BAR_WIDTH = 48;
 
 type SidebarStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -29,6 +30,32 @@ export function writeSidebarState(isOpen: boolean, storage = getSidebarStorage()
 export function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
+export function sidebarWidthFromPointerX(
+  pointerClientX: number,
+  activityBarWidth = ACTIVITY_BAR_WIDTH,
+): number {
+  return clampSidebarWidth(pointerClientX - activityBarWidth);
+}
+
+export function nextSidebarWidthFromKey(currentWidth: number, key: string): number | null {
+  switch (key) {
+    case 'ArrowLeft':
+      return clampSidebarWidth(currentWidth - SIDEBAR_KEYBOARD_STEP);
+    case 'ArrowRight':
+      return clampSidebarWidth(currentWidth + SIDEBAR_KEYBOARD_STEP);
+    case 'PageUp':
+      return clampSidebarWidth(currentWidth - SIDEBAR_KEYBOARD_PAGE_STEP);
+    case 'PageDown':
+      return clampSidebarWidth(currentWidth + SIDEBAR_KEYBOARD_PAGE_STEP);
+    case 'Home':
+      return SIDEBAR_MIN_WIDTH;
+    case 'End':
+      return SIDEBAR_MAX_WIDTH;
+    default:
+      return null;
+  }
 }
 
 export function readSidebarWidth(storage = getSidebarStorage()): number {
