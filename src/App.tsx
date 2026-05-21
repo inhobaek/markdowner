@@ -250,7 +250,7 @@ import {
   type WorkspaceTreeNode,
 } from './lib/workspaceTree';
 import { buildQuickOpenItems } from './lib/quickOpenItems';
-import { buildOpenTabsPayload } from './lib/openTabsSession';
+import { buildOpenTabsPayload, loadOpenTabsWithEmptyRetry } from './lib/openTabsSession';
 import { buildWorkspaceSearchPaths } from './lib/workspaceSearchScope';
 import {
   openSelectedDocumentTabs,
@@ -1799,19 +1799,16 @@ export default function App() {
         }
 
         try {
-          let persistedTabs = await loadOpenTabs();
-          if (cancelled) return;
-          if (persistedTabs.openTabs.length === 0) {
-            await new Promise<void>((resolve) => {
-              window.setTimeout(resolve, STARTUP_OPEN_TABS_RETRY_MS);
-            });
-            if (cancelled) return;
-            const retriedTabs = await loadOpenTabs();
-            if (cancelled) return;
-            if (retriedTabs.openTabs.length > 0) {
-              persistedTabs = retriedTabs;
-            }
-          }
+          const persistedTabsResult = await loadOpenTabsWithEmptyRetry({
+            load: loadOpenTabs,
+            waitForRetry: () =>
+              new Promise<void>((resolve) => {
+                window.setTimeout(resolve, STARTUP_OPEN_TABS_RETRY_MS);
+              }),
+            shouldAbort: () => cancelled,
+          });
+          if (persistedTabsResult.kind === 'aborted' || cancelled) return;
+          const persistedTabs = persistedTabsResult.payload;
           // Hydrate the caret map regardless of whether tabs come back —
           // useful when the user reopens a single CLI-opened file and the
           // map still carries its remembered position.

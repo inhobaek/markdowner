@@ -8,6 +8,16 @@ type BuildOpenTabsPayloadInput = {
   cursorPositions: ReadonlyMap<string, SourceCursorLocation>;
 };
 
+type LoadOpenTabsWithEmptyRetryInput = {
+  load: () => Promise<OpenTabsPayload>;
+  waitForRetry: () => Promise<void>;
+  shouldAbort?: () => boolean;
+};
+
+type LoadOpenTabsWithEmptyRetryResult =
+  | { kind: 'ready'; payload: OpenTabsPayload }
+  | { kind: 'aborted' };
+
 export function buildOpenTabsPayload(
   input: BuildOpenTabsPayloadInput,
 ): OpenTabsPayload {
@@ -40,5 +50,33 @@ export function buildOpenTabsPayload(
     openTabs,
     activeTabPath,
     cursorPositions,
+  };
+}
+
+export async function loadOpenTabsWithEmptyRetry(
+  input: LoadOpenTabsWithEmptyRetryInput,
+): Promise<LoadOpenTabsWithEmptyRetryResult> {
+  const first = await input.load();
+  if (input.shouldAbort?.()) {
+    return { kind: 'aborted' };
+  }
+
+  if (first.openTabs.length > 0) {
+    return { kind: 'ready', payload: first };
+  }
+
+  await input.waitForRetry();
+  if (input.shouldAbort?.()) {
+    return { kind: 'aborted' };
+  }
+
+  const retried = await input.load();
+  if (input.shouldAbort?.()) {
+    return { kind: 'aborted' };
+  }
+
+  return {
+    kind: 'ready',
+    payload: retried.openTabs.length > 0 ? retried : first,
   };
 }
