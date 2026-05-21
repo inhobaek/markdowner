@@ -6,6 +6,7 @@ import {
   displayFileName,
   displayWorkspacePath,
   filterWorkspaceTree,
+  pruneCollapsedWorkspaceFolderKeys,
   toggleWorkspaceFolderKey,
 } from './workspaceTree';
 
@@ -143,5 +144,25 @@ describe('toggleWorkspaceFolderKey', () => {
       'reference',
     ]);
     expect(collapsedKeys).toEqual(['guides', 'notes']);
+  });
+});
+
+describe('pruneCollapsedWorkspaceFolderKeys', () => {
+  it('keeps collapsed folder keys that still exist in the workspace tree', () => {
+    const tree = buildWorkspaceTree(
+      [
+        '/tmp/project/guides/draft.md',
+        '/tmp/project/guides/reference/api.md',
+        '/tmp/project/notes/today.md',
+      ],
+      '/tmp/project',
+    );
+
+    expect(
+      pruneCollapsedWorkspaceFolderKeys(
+        ['missing', 'guides/reference', 'guides', 'notes'],
+        tree,
+      ),
+    ).toEqual(['guides/reference', 'guides', 'notes']);
   });
 });

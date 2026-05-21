@@ -236,6 +236,7 @@ import {
   displayFileName,
   displayWorkspacePath,
   filterWorkspaceTree,
+  pruneCollapsedWorkspaceFolderKeys,
   toggleWorkspaceFolderKey,
   type WorkspaceTreeNode,
 } from './lib/workspaceTree';
@@ -2052,8 +2053,9 @@ export default function App() {
   }, [tabs, activeTabId, startupTabsReady]);
 
   useEffect(() => {
-    const nextFolderKeys = new Set(collectWorkspaceFolderKeys(workspaceTree));
-    setCollapsedFolderKeys((current) => current.filter((key) => nextFolderKeys.has(key)));
+    setCollapsedFolderKeys((current) =>
+      pruneCollapsedWorkspaceFolderKeys(current, workspaceTree),
+    );
   }, [workspaceTreeSignature]);
 
   useEffect(() => {
