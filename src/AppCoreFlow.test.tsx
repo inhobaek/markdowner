@@ -277,7 +277,7 @@ describe('App core Markdown editing flow', () => {
       await waitFor(() => {
         expect(openDocumentMock).toHaveBeenCalledWith(openedPath);
       });
-      expect(screen.getByText('Core flow')).toBeInTheDocument();
+      expect(screen.getByTestId('editor-surface-wysiwyg')).toHaveTextContent('Core flow');
 
       fireEvent.keyDown(window, { key: 'k', metaKey: true });
       fireEvent.keyDown(window, { key: 'e', metaKey: true });
@@ -288,7 +288,7 @@ describe('App core Markdown editing flow', () => {
       await waitFor(() => {
         expect(setModeMock).toHaveBeenCalledWith('Wysiwyg');
       });
-      expect(screen.getByText('Core flow')).toBeInTheDocument();
+      expect(screen.getByTestId('editor-surface-wysiwyg')).toHaveTextContent('Core flow');
 
       fireEvent.keyDown(window, { key: 'k', metaKey: true });
       fireEvent.keyDown(window, { key: 's', metaKey: true });

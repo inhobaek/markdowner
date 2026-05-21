@@ -2702,7 +2702,9 @@ describe('App recent documents', () => {
     const search = await screen.findByRole('search', { name: /find and replace/i });
     const findInput = within(search).getByRole('textbox', { name: /find text/i });
 
-    expect(findInput).toHaveFocus();
+    await waitFor(() => {
+      expect(findInput).toHaveFocus();
+    });
 
     fireEvent.change(findInput, { target: { value: 'alpha' } });
     expect(within(search).getByText(/press enter to search/i)).toBeInTheDocument();
