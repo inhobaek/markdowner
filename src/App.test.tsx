@@ -5157,6 +5157,11 @@ describe('App recent documents', () => {
     const fontSizeInput = within(dialog).getByLabelText(/outline font size/i);
     const rowSpacingInput = within(dialog).getByLabelText(/outline row spacing/i);
 
+    await waitFor(() => {
+      expect(fontSizeInput).toHaveValue(13);
+      expect(rowSpacingInput).toHaveValue(2);
+    });
+
     fireEvent.change(fontSizeInput, { target: { value: '12' } });
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('save_settings', {
