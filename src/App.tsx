@@ -219,6 +219,7 @@ import {
 import { buildQuickOpenItems } from './lib/quickOpenItems';
 import { buildOpenTabsPayload } from './lib/openTabsSession';
 import { buildWorkspaceSearchPaths } from './lib/workspaceSearchScope';
+import { openSelectedDocumentTabs } from './lib/openDocumentSelection';
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
@@ -2363,32 +2364,16 @@ export default function App() {
       await syncActiveDraftBestEffort();
       if (isEditorOpStale(token)) return;
 
-      // Accumulate new tabs locally so we can commit them in one batched
-      // update at the end. Per-iteration setTabs would overwrite earlier
-      // additions because each call reads the same stale closure value.
-      const additions: DocumentTab[] = [];
-      let lastSnapshot: AppSnapshot | null = null;
-      let lastActiveId: string | null = null;
+      const openResult = await openSelectedDocumentTabs({
+        paths,
+        currentTabs: tabs,
+        openPath: openDocument,
+        createTabId: generateDocumentTabId,
+        shouldAbort: () => isEditorOpStale(token),
+      });
+      if (openResult.kind === 'aborted') return;
 
-      for (const path of paths) {
-        const existing =
-          findDocumentTabByPath(tabs, path) ?? additions.find((tab) => tab.path === path);
-        if (existing) {
-          lastActiveId = existing.id;
-          continue;
-        }
-        const next = await openDocument(path);
-        if (isEditorOpStale(token)) return;
-        const tab = createDocumentTab({
-          id: generateDocumentTabId(),
-          path: next.activeDocumentPath ?? path,
-          name: next.activeDocumentName ?? path,
-          source: next.activeDocumentSource ?? '',
-        });
-        additions.push(tab);
-        lastSnapshot = next;
-        lastActiveId = tab.id;
-      }
+      const { additions, lastSnapshot, lastActiveId } = openResult;
 
       if (additions.length > 0 && lastSnapshot && lastActiveId) {
         const finalActiveId = lastActiveId;

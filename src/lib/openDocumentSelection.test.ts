@@ -1,0 +1,128 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type { AppSnapshot } from './desktop';
+import { createDocumentTab } from './documentTabs';
+import { openSelectedDocumentTabs } from './openDocumentSelection';
+
+function snapshotFor(path: string, source = `# ${path}`): AppSnapshot {
+  return {
+    rootDir: null,
+    workspaceDocuments: [],
+    recentDocuments: [path],
+    activeDocumentName: path.split('/').pop() ?? path,
+    activeDocumentPath: path,
+    activeDocumentSource: source,
+    activeDocumentDirty: false,
+    mode: 'Wysiwyg',
+    theme: {
+      kind: 'BuiltInDark',
+      stylesheet: null,
+      stylesheetPath: null,
+    },
+    lastError: null,
+  };
+}
+
+describe('openSelectedDocumentTabs', () => {
+  it('opens new paths and keeps the last opened tab active', async () => {
+    const openPath = vi.fn(async (path: string) => snapshotFor(path));
+    const ids = ['tab-a', 'tab-b'];
+
+    const result = await openSelectedDocumentTabs({
+      paths: ['/tmp/a.md', '/tmp/b.md'],
+      currentTabs: [],
+      openPath,
+      createTabId: () => ids.shift() ?? 'extra-tab',
+    });
+
+    expect(result).toMatchObject({
+      kind: 'ready',
+      lastActiveId: 'tab-b',
+      lastSnapshot: snapshotFor('/tmp/b.md'),
+    });
+    if (result.kind !== 'ready') throw new Error('expected ready result');
+    expect(result.additions).toEqual([
+      createDocumentTab({
+        id: 'tab-a',
+        path: '/tmp/a.md',
+        name: 'a.md',
+        source: '# /tmp/a.md',
+      }),
+      createDocumentTab({
+        id: 'tab-b',
+        path: '/tmp/b.md',
+        name: 'b.md',
+        source: '# /tmp/b.md',
+      }),
+    ]);
+  });
+
+  it('reuses existing and newly-added tabs for duplicate selected paths', async () => {
+    const existing = createDocumentTab({
+      id: 'existing',
+      path: '/tmp/open.md',
+      source: '# Open',
+    });
+    const openPath = vi.fn(async (path: string) => snapshotFor(path));
+
+    const result = await openSelectedDocumentTabs({
+      paths: ['/tmp/open.md', '/tmp/new.md', '/tmp/new.md'],
+      currentTabs: [existing],
+      openPath,
+      createTabId: () => 'new-tab',
+    });
+
+    expect(openPath).toHaveBeenCalledTimes(1);
+    expect(openPath).toHaveBeenCalledWith('/tmp/new.md');
+    expect(result).toMatchObject({
+      kind: 'ready',
+      lastActiveId: 'new-tab',
+    });
+    if (result.kind !== 'ready') throw new Error('expected ready result');
+    expect(result.additions).toHaveLength(1);
+  });
+
+  it('falls back to the requested path when the snapshot has partial document metadata', async () => {
+    const openPath = vi.fn(async () => ({
+      ...snapshotFor('/tmp/requested.md'),
+      activeDocumentName: null,
+      activeDocumentPath: null,
+      activeDocumentSource: null,
+    }));
+
+    const result = await openSelectedDocumentTabs({
+      paths: ['/tmp/requested.md'],
+      currentTabs: [],
+      openPath,
+      createTabId: () => 'tab-requested',
+    });
+
+    if (result.kind !== 'ready') throw new Error('expected ready result');
+    expect(result.additions[0]).toEqual(
+      createDocumentTab({
+        id: 'tab-requested',
+        path: '/tmp/requested.md',
+        name: '/tmp/requested.md',
+        source: '',
+      }),
+    );
+  });
+
+  it('aborts without committing additions when the editor operation becomes stale', async () => {
+    let stale = false;
+    const openPath = vi.fn(async (path: string) => {
+      stale = true;
+      return snapshotFor(path);
+    });
+
+    const result = await openSelectedDocumentTabs({
+      paths: ['/tmp/a.md'],
+      currentTabs: [],
+      openPath,
+      createTabId: () => 'tab-a',
+      shouldAbort: () => stale,
+    });
+
+    expect(result).toEqual({ kind: 'aborted' });
+  });
+});
