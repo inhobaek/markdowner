@@ -142,6 +142,7 @@ import {
   resolveCloseTabTransition,
   resolveSettingsTabToggle,
   resolveSwitchTabTransition,
+  startupRestoreTargetForDocumentTab,
   restorePersistedDocumentTabs,
   stashDocumentTabDraft,
   upsertDocumentTabFromSnapshot,
@@ -1854,15 +1855,12 @@ export default function App() {
           // Arm the startup focus + caret restore. The follow-up effect
           // consumes this once the editor surface for the picked tab is
           // ready (it sees an empty doc + path mismatch otherwise).
-          if (
-            hydratedActiveTab?.kind === 'document' &&
-            hydratedActiveTab.path &&
-            !hydratedActiveTab.missing
-          ) {
-            startupRestoreRef.current = {
-              path: hydratedActiveTab.path,
-              location: persistedTabs.cursorPositions[hydratedActiveTab.path] ?? null,
-            };
+          const startupRestoreTarget = startupRestoreTargetForDocumentTab(
+            hydratedActiveTab,
+            persistedTabs.cursorPositions,
+          );
+          if (startupRestoreTarget) {
+            startupRestoreRef.current = startupRestoreTarget;
           }
           startTransition(() => {
             if (nextSnapshot) {

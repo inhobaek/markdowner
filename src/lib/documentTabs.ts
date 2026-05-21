@@ -102,6 +102,11 @@ type HydrateRestoredActiveDocumentTabResult<Snapshot extends DocumentTabSnapshot
     }
   | { kind: 'aborted' };
 
+type StartupRestoreTarget<Location> = {
+  path: string;
+  location: Location | null;
+};
+
 type UpsertDocumentTabInput = {
   currentTabs: readonly DocumentTab[];
   currentActiveId: string | null;
@@ -410,6 +415,20 @@ export async function hydrateRestoredActiveDocumentTab<
       localDraft: '',
     };
   }
+}
+
+export function startupRestoreTargetForDocumentTab<Location>(
+  tab: DocumentTab | null,
+  cursorPositions: Readonly<Record<string, Location>>,
+): StartupRestoreTarget<Location> | null {
+  if (tab?.kind !== 'document' || !tab.path || tab.missing) {
+    return null;
+  }
+
+  return {
+    path: tab.path,
+    location: cursorPositions[tab.path] ?? null,
+  };
 }
 
 export function upsertDocumentTab(input: UpsertDocumentTabInput): UpsertDocumentTabResult {

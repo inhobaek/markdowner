@@ -21,6 +21,7 @@ import {
   resolveCloseTabTransition,
   resolveSettingsTabToggle,
   resolveSwitchTabTransition,
+  startupRestoreTargetForDocumentTab,
   restorePersistedDocumentTabs,
   stashDocumentTabDraft,
   upsertDocumentTab,
@@ -523,6 +524,52 @@ describe('hydrateRestoredActiveDocumentTab', () => {
     });
 
     expect(result).toEqual({ kind: 'aborted' });
+  });
+});
+
+describe('startupRestoreTargetForDocumentTab', () => {
+  it('returns the document path with its remembered cursor location', () => {
+    const tab = documentTab({
+      path: '/tmp/active.md',
+    });
+    const cursorLocation = { line: 3, column: 5 };
+
+    expect(
+      startupRestoreTargetForDocumentTab(tab, {
+        '/tmp/active.md': cursorLocation,
+      }),
+    ).toEqual({
+      path: '/tmp/active.md',
+      location: cursorLocation,
+    });
+  });
+
+  it('uses a null cursor location when the document has no remembered cursor', () => {
+    expect(startupRestoreTargetForDocumentTab(documentTab(), {})).toEqual({
+      path: '/tmp/notes.md',
+      location: null,
+    });
+  });
+
+  it('does not create restore targets for missing, untitled, settings, or absent tabs', () => {
+    expect(
+      startupRestoreTargetForDocumentTab(
+        documentTab({
+          missing: true,
+        }),
+        {},
+      ),
+    ).toBeNull();
+    expect(
+      startupRestoreTargetForDocumentTab(
+        documentTab({
+          path: null,
+        }),
+        {},
+      ),
+    ).toBeNull();
+    expect(startupRestoreTargetForDocumentTab(createSettingsTab(), {})).toBeNull();
+    expect(startupRestoreTargetForDocumentTab(null, {})).toBeNull();
   });
 });
 
