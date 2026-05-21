@@ -5,6 +5,7 @@ import {
   SETTINGS_TAB_NAME,
   createDocumentTab,
   createDocumentTabFromSnapshot,
+  createMissingDocumentTab,
   createSettingsTab,
   documentTabMetadataFromSnapshot,
   findDocumentTabByPath,
@@ -139,6 +140,25 @@ describe('createDocumentTabFromSnapshot', () => {
         path: '/tmp/original.md',
         name: 'original.md',
         source: '',
+      }),
+    );
+  });
+});
+
+describe('createMissingDocumentTab', () => {
+  it('creates a missing-file placeholder with empty document content', () => {
+    expect(
+      createMissingDocumentTab({
+        id: 'missing-1',
+        path: '/tmp/missing.md',
+        name: 'missing.md',
+      }),
+    ).toEqual(
+      createDocumentTab({
+        id: 'missing-1',
+        path: '/tmp/missing.md',
+        name: 'missing.md',
+        missing: true,
       }),
     );
   });

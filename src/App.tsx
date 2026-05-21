@@ -131,8 +131,8 @@ import {
   setSnapshotMode,
 } from './lib/snapshotState';
 import {
-  createDocumentTab,
   createDocumentTabFromSnapshot,
+  createMissingDocumentTab,
   findDocumentTabByPath,
   generateDocumentTabId,
   isDocumentTabDirty,
@@ -1834,11 +1834,10 @@ export default function App() {
             } catch {
               // File is gone — keep the tab as a missing-file placeholder.
               restored.push(
-                createDocumentTab({
+                createMissingDocumentTab({
                   id: generateDocumentTabId(),
                   path,
                   name: displayFileName(path),
-                  missing: true,
                 }),
               );
             }

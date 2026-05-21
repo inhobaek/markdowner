@@ -37,6 +37,12 @@ type CreateDocumentTabFromSnapshotInput = {
   fallbackName?: string | null;
 };
 
+type CreateMissingDocumentTabInput = {
+  id: string;
+  path: string;
+  name: string;
+};
+
 type DocumentTabSnapshotMetadataInput = {
   activeDocumentPath: string | null;
   activeDocumentName: string | null;
@@ -212,6 +218,15 @@ export function createDocumentTabFromSnapshot(
     path: input.snapshot.activeDocumentPath ?? input.fallbackPath,
     name: input.snapshot.activeDocumentName ?? input.fallbackName ?? 'Untitled',
     source: input.snapshot.activeDocumentSource ?? '',
+  });
+}
+
+export function createMissingDocumentTab(input: CreateMissingDocumentTabInput): DocumentTab {
+  return createDocumentTab({
+    id: input.id,
+    path: input.path,
+    name: input.name,
+    missing: true,
   });
 }
 
