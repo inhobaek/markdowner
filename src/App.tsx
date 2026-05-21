@@ -118,6 +118,12 @@ import {
   movePageInProseMirror,
 } from './lib/editorNavigation';
 import {
+  focusActiveEditor as focusActiveEditorTarget,
+  focusExplorerFilter as focusExplorerFilterTarget,
+  focusExplorerTree as focusExplorerTreeTarget,
+  focusOutlineTree as focusOutlineTreeTarget,
+} from './lib/focusTargets';
+import {
   wysiwygCursorMarkdownOffset,
   wysiwygCursorSourceLocation,
   wysiwygPositionAtMarkdownOffset,
@@ -709,92 +715,16 @@ export default function App() {
    * tree button / open editor / filter input.
    */
   const focusExplorerTree = () => {
-    const restoreLast = () => {
-      const remembered = lastExplorerFocusRef.current;
-      if (
-        remembered &&
-        remembered.isConnected &&
-        remembered.closest('[data-explorer-root]')
-      ) {
-        remembered.focus({ preventScroll: false });
-        return true;
-      }
-      return false;
-    };
-
-    const focusFallback = () => {
-      const root = document.querySelector<HTMLElement>('[data-explorer-root]');
-      if (!root) return false;
-      const firstTreeButton = root.querySelector<HTMLButtonElement>(
-        '[data-testid="explorer-workspace-tree"] button',
-      );
-      if (firstTreeButton) {
-        firstTreeButton.focus();
-        return true;
-      }
-      const firstOpenEditor = root.querySelector<HTMLButtonElement>(
-        '[data-testid="explorer-open-editors"] button',
-      );
-      if (firstOpenEditor) {
-        firstOpenEditor.focus();
-        return true;
-      }
-      const filter = root.querySelector<HTMLInputElement>('[data-explorer-filter]');
-      if (filter) {
-        filter.focus();
-        return true;
-      }
-      return false;
-    };
-
-    // Try synchronously first — when the Explorer is already mounted this
-    // avoids the one-frame visual hop. Defer to rAF only when needed (e.g.
-    // sidebar just became visible).
-    if (restoreLast() || focusFallback()) return;
-    requestAnimationFrame(() => {
-      if (restoreLast()) return;
-      focusFallback();
-    });
+    focusExplorerTreeTarget(lastExplorerFocusRef.current);
   };
 
   const focusOutlineTree = () => {
-    const tryFocus = () => {
-      const root = document.querySelector<HTMLElement>('[data-outline-root]');
-      if (!root) return false;
-
-      const remembered = lastOutlineFocusRef.current;
-      if (remembered && remembered.isConnected && remembered.closest('[data-outline-root]')) {
-        remembered.focus({ preventScroll: false });
-        return true;
-      }
-
-      const firstOutlineRow = root.querySelector<HTMLButtonElement>('[data-outline-row]');
-      if (firstOutlineRow) {
-        firstOutlineRow.focus();
-        return true;
-      }
-
-      root.focus({ preventScroll: false });
-      return true;
-    };
-
-    if (tryFocus()) return;
-    requestAnimationFrame(() => {
-      tryFocus();
-    });
+    focusOutlineTreeTarget(lastOutlineFocusRef.current);
   };
 
   /** Focus the Files filter input (VS Code Cmd+F in Explorer parity). */
   const focusExplorerFilter = () => {
-    requestAnimationFrame(() => {
-      const input = document.querySelector<HTMLInputElement>(
-        '[data-explorer-root] [data-explorer-filter]',
-      );
-      if (input) {
-        input.focus();
-        input.select();
-      }
-    });
+    focusExplorerFilterTarget();
   };
 
   /**
@@ -804,33 +734,10 @@ export default function App() {
    * the user just selected.
    */
   const focusActiveEditor = () => {
-    const tryFocus = () => {
-      if (currentMode === 'Wysiwyg') {
-        const proseMirror = document.querySelector<HTMLElement>(
-          '[data-testid="editor-surface-wysiwyg"] .ProseMirror',
-        );
-        if (proseMirror) {
-          proseMirror.focus();
-          return true;
-        }
-        return false;
-      }
-      if (sourceEditorViewRef.current) {
-        sourceEditorViewRef.current.focus();
-        return true;
-      }
-      const sourceTextarea = sourceEditorContainerRef.current?.querySelector('textarea');
-      if (sourceTextarea instanceof HTMLTextAreaElement) {
-        sourceTextarea.focus();
-        return true;
-      }
-      return false;
-    };
-    // Synchronous attempt first to avoid a perceptible one-frame hop. Defer to
-    // rAF as a fallback if the target surface hasn't mounted yet.
-    if (tryFocus()) return;
-    requestAnimationFrame(() => {
-      tryFocus();
+    focusActiveEditorTarget({
+      currentMode,
+      sourceEditorView: sourceEditorViewRef.current,
+      sourceEditorContainer: sourceEditorContainerRef.current,
     });
   };
 
