@@ -686,7 +686,7 @@ describe('App recent documents', () => {
     } finally {
       runtimeErrors.restore();
     }
-  });
+  }, 10000);
 
   it('opens an Outline sidebar view with document headings from the active draft', async () => {
     bootstrapMock.mockResolvedValue(

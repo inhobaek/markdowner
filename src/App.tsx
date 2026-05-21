@@ -204,6 +204,7 @@ import {
   type WorkspaceTreeNode,
 } from './lib/workspaceTree';
 import { buildQuickOpenItems } from './lib/quickOpenItems';
+import { buildOpenTabsPayload } from './lib/openTabsSession';
 import { buildWorkspaceSearchPaths } from './lib/workspaceSearchScope';
 import {
   SIDEBAR_DEFAULT_WIDTH,
@@ -778,27 +779,13 @@ export default function App() {
   // hasn't committed a pending render yet.
   const persistOpenTabsAndCursorsNow = () => {
     if (!startupTabsReadyRef.current) return;
-    const currentTabs = tabsRef.current;
-    const paths = currentTabs
-      .map((tab) => tab.path)
-      .filter((path): path is string => path !== null);
-    const pathSet = new Set(paths);
-    const activeId = activeTabIdRef.current;
-    const activeTab = activeId
-      ? currentTabs.find((tab) => tab.id === activeId)
-      : null;
-    const activePath = activeTab?.path ?? null;
-    const cursorPositions: Record<string, SourceCursorLocation> = {};
-    cursorByPathRef.current.forEach((value, key) => {
-      if (pathSet.has(key)) {
-        cursorPositions[key] = value;
-      }
-    });
-    void saveOpenTabs({
-      openTabs: paths,
-      activeTabPath: activePath,
-      cursorPositions,
-    }).catch((error) => {
+    void saveOpenTabs(
+      buildOpenTabsPayload({
+        tabs: tabsRef.current,
+        activeTabId: activeTabIdRef.current,
+        cursorPositions: cursorByPathRef.current,
+      }),
+    ).catch((error) => {
       console.warn('[Markdowner] Failed to persist open tabs:', error);
     });
   };
