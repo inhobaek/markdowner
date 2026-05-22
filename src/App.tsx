@@ -194,6 +194,11 @@ import {
   formatThemeLabel,
 } from './lib/shellDisplay';
 import {
+  buildDocumentMeta,
+  buildOpenEditorItems,
+  buildTabStripItems,
+} from './lib/shellModel';
+import {
   findClickedAnchorHref,
   isOpenLinkClick,
   openMarkdownLink,
@@ -3507,12 +3512,20 @@ export default function App() {
     };
   }, []);
 
-  const documentMeta = snapshot.activeDocumentPath
-    ? displayWorkspacePath(snapshot.activeDocumentPath, snapshot.rootDir)
-    : activeDocumentOpen
-      ? 'Save As to choose where this draft lives.'
-      : 'Open a workspace or a Markdown file to begin.';
-
+  const documentMeta = buildDocumentMeta({
+    activeDocumentPath: snapshot.activeDocumentPath,
+    rootDir: snapshot.rootDir,
+    activeDocumentOpen,
+  });
+  const openEditorItems = buildOpenEditorItems({
+    tabs,
+    activeTabId,
+    isDirty: tabIsDirty,
+  });
+  const tabStripItems = buildTabStripItems({
+    tabs,
+    isDirty: tabIsDirty,
+  });
   const quickOpenItems = buildQuickOpenItems(snapshot);
 
   const handleQuickOpenSelect = (path: string) => {
@@ -3640,19 +3653,7 @@ export default function App() {
           onWorkspaceFilterChange={setWorkspaceFilter}
           workspaceTreeLength={workspaceTree.length}
           filteredWorkspaceTreeLength={filteredWorkspaceTree.length}
-          openEditors={tabs.map((tab) => ({
-            id: tab.id,
-            name: tab.name,
-            path: tab.path,
-            isActive: tab.id === activeTabId,
-            // Reuse tabIsDirty so the indicator agrees with the close/quit
-            // "Save changes?" prompt — both must normalize trailing newlines
-            // so the WYSIWYG TrailingNode's empty paragraph (which exists
-            // only in the view, not on disk) doesn't pin the dot on after a
-            // successful save.
-            isDirty: tabIsDirty(tab),
-            missing: tab.missing,
-          }))}
+          openEditors={openEditorItems}
           recentDocuments={snapshot.recentDocuments}
           activeDocumentPath={snapshot.activeDocumentPath}
           rootDir={snapshot.rootDir}
@@ -3720,17 +3721,7 @@ export default function App() {
 
       <div className="flex min-h-0 min-w-0 flex-col">
         <Tabs
-          items={tabs.map((tab, index) => ({
-            id: tab.id,
-            kind: tab.kind,
-            name: tab.name,
-            // Same normalized check as the Explorer "Open Editors" list and
-            // the close/quit "Save changes?" prompt. See tabIsDirty.
-            isDirty: tabIsDirty(tab),
-            missing: tab.missing,
-            shortcutLabel:
-              index < 9 ? `⌘${index + 1}` : index === 9 ? '⌘0' : null,
-          }))}
+          items={tabStripItems}
           activeTabId={activeTabId}
           onSelectTab={(id) => void switchToTab(id)}
           onCloseTab={(id) => void handleCloseTab(id)}

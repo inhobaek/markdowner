@@ -18,20 +18,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import type { OpenEditorItem } from '@/lib/shellModel';
 import { cn } from '@/lib/utils';
 
 type ExplorerSectionId = 'editors' | 'workspace' | 'recent';
 
 const COLLAPSED_SECTIONS_STORAGE_KEY = 'markdowner.explorer.collapsedSections';
 
-export interface OpenEditorItem {
-  id: string;
-  name: string;
-  path: string | null;
-  isActive: boolean;
-  isDirty: boolean;
-  missing: boolean;
-}
+export type { OpenEditorItem } from '@/lib/shellModel';
 
 export interface ExplorerPanelProps {
   busy: boolean;
