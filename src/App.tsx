@@ -18,7 +18,6 @@ import { useEditor, type Editor as TiptapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtension';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
-import { SourceEditorView } from '@/components/SourceEditorView';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -58,6 +57,7 @@ import {
   type SideBarPanel,
 } from '@/shell/SideBar';
 import { SidebarResizeHandle } from '@/shell/SidebarResizeHandle';
+import { SourceEditorPane } from '@/shell/SourceEditorPane';
 import { StatusBar } from '@/shell/StatusBar';
 import { SettingsTabContent } from '@/shell/SettingsTabContent';
 import { WorkspaceTree } from '@/shell/WorkspaceTree';
@@ -981,7 +981,7 @@ export default function App() {
 
   // Stable callback refs for the CodeMirror host. The inline arrow forms
   // would create new identities on every parent render, defeating the
-  // memo on <SourceEditorView /> and forcing CodeMirror's host to
+  // memoised source editor host and forcing CodeMirror to
   // reconcile on every cursor tick (the visible "text style flicker").
   const handleSourceEditorChange = useEffectEvent((value: string) => {
     setLocalDraft(value);
@@ -3778,10 +3778,10 @@ export default function App() {
           />
         }
         sourceEditor={
-          <SourceEditorView
+          <SourceEditorPane
             value={localDraft}
             extensions={sourceEditorExtensions}
-            theme={snapshot.theme.kind === 'BuiltInDark' ? 'dark' : 'light'}
+            themeKind={snapshot.theme.kind}
             onChange={handleSourceEditorChange}
             onStatistics={handleSourceEditorStatistics}
             onCreateEditor={handleSourceEditorCreate}
