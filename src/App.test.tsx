@@ -6837,6 +6837,72 @@ describe('App recent documents', () => {
     expect(screen.getByRole('tab', { name: /launched\.md/i })).toBeInTheDocument();
   });
 
+  it('keeps a native update-snapshot active when an earlier open resolves later', async () => {
+    let resolveOpen: ((snapshot: AppSnapshot) => void) | undefined;
+
+    bootstrapMock.mockResolvedValue(baseSnapshot());
+    openDialogMock.mockResolvedValue('/tmp/project/alpha.md');
+    openDocumentMock.mockImplementation(
+      () =>
+        new Promise<AppSnapshot>((resolve) => {
+          resolveOpen = resolve;
+        }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(updateSnapshotHandler).toBeTypeOf('function');
+    });
+
+    fireEvent.keyDown(window, { key: 'o', metaKey: true });
+
+    await waitFor(() => {
+      expect(openDocumentMock).toHaveBeenCalledWith('/tmp/project/alpha.md');
+      expect(resolveOpen).toBeTypeOf('function');
+    });
+
+    await act(async () => {
+      await updateSnapshotHandler?.({
+        payload: baseSnapshot({
+          activeDocumentName: 'launched.md',
+          activeDocumentPath: '/tmp/project/launched.md',
+          activeDocumentSource: '# Launched from Finder',
+          mode: 'Editor',
+        }),
+      });
+    });
+
+    const sourceEditor = await screen.findByLabelText('Source editor');
+    await waitFor(() => {
+      expect(sourceEditor).toHaveValue('# Launched from Finder');
+      expect(screen.getByRole('tab', { name: /launched\.md/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    await act(async () => {
+      resolveOpen?.(
+        baseSnapshot({
+          activeDocumentName: 'alpha.md',
+          activeDocumentPath: '/tmp/project/alpha.md',
+          activeDocumentSource: '# Alpha',
+          mode: 'Editor',
+        }),
+      );
+    });
+
+    expect(sourceEditor).toHaveValue('# Launched from Finder');
+    expect(screen.getByRole('tab', { name: /launched\.md/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.queryByRole('tab', { name: /alpha\.md/i })).not.toBeInTheDocument();
+  });
+
   it('keeps a CLI-launched Markdown file active instead of replacing it with restored tabs', async () => {
     bootstrapMock.mockResolvedValue(
       baseSnapshot({

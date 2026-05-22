@@ -1720,6 +1720,7 @@ export default function App() {
   };
 
   const handleExternalSnapshot = useEffectEvent((next: AppSnapshot) => {
+    nextEditorOpRequest();
     stashActiveTabDraft();
     applySnapshot(next);
     if (next.activeDocumentSource !== null) {
