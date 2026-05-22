@@ -1,3 +1,5 @@
+import { collectMarkdownHeadings } from './markdownHeadings';
+
 export type DocumentStats = {
   words: number;
   characters: number;
@@ -10,7 +12,6 @@ export type DocumentStats = {
 
 const IMAGE_PATTERN = /!\[[^\]]*]\([^\n)]+\)/g;
 const LINK_PATTERN = /\[[^\]]+]\([^\n)]+\)/g;
-const HEADING_PATTERN = /^#{1,6}\s+.+$/gm;
 const TABLE_SEPARATOR_PATTERN = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
 
 export function calculateDocumentStats(source: string): DocumentStats {
@@ -19,7 +20,7 @@ export function calculateDocumentStats(source: string): DocumentStats {
   const words = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
   const readingTimeMinutes = words === 0 ? 0 : Math.max(1, Math.ceil(words / 200));
 
-  const headingMatches = source.match(HEADING_PATTERN) ?? [];
+  const headings = collectMarkdownHeadings(source);
   const imageMatches = source.match(IMAGE_PATTERN) ?? [];
   const links = source.replace(IMAGE_PATTERN, '').match(LINK_PATTERN) ?? [];
 
@@ -39,7 +40,7 @@ export function calculateDocumentStats(source: string): DocumentStats {
     words,
     characters,
     readingTimeMinutes,
-    headings: headingMatches.length,
+    headings: headings.length,
     links: links.length,
     images: imageMatches.length,
     tables,

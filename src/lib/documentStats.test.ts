@@ -39,4 +39,19 @@ describe('calculateDocumentStats', () => {
 
     expect(calculateDocumentStats(source).readingTimeMinutes).toBe(2);
   });
+
+  it('does not count headings inside fenced code blocks', () => {
+    const source = [
+      '# Report',
+      '',
+      '```sh',
+      '# shell comment',
+      'echo done',
+      '```',
+      '',
+      '## Next',
+    ].join('\n');
+
+    expect(calculateDocumentStats(source).headings).toBe(2);
+  });
 });
