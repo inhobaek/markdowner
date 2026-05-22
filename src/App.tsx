@@ -1944,6 +1944,11 @@ export default function App() {
   const nextThemeRequest = () => ++themeRequestIdRef.current;
   const isThemeRequestStale = (requestId: number) =>
     themeRequestIdRef.current !== requestId;
+  const applyThemeSnapshotIfCurrent = (requestId: number, next: AppSnapshot) => {
+    if (isThemeRequestStale(requestId)) return false;
+    applySnapshot(next, true);
+    return true;
+  };
 
   const handleSettingsChange = (
     next: Settings,
@@ -1961,9 +1966,7 @@ export default function App() {
       const requestId = nextThemeRequest();
       void setTheme(resolveOsTheme())
         .then((synced) => {
-          if (!isThemeRequestStale(requestId)) {
-            applySnapshot(synced, true);
-          }
+          applyThemeSnapshotIfCurrent(requestId, synced);
         })
         .catch(() => undefined);
     }
@@ -1989,8 +1992,7 @@ export default function App() {
       const requestId = nextThemeRequest();
       try {
         const next = await setTheme(resolveOsTheme());
-        if (isThemeRequestStale(requestId)) return;
-        applySnapshot(next, true);
+        applyThemeSnapshotIfCurrent(requestId, next);
       } catch (error) {
         if (isThemeRequestStale(requestId)) return;
         reportOperationError(error, 'Could not follow the system theme');
@@ -2567,8 +2569,7 @@ export default function App() {
     const requestId = nextThemeRequest();
     await withBusy(async () => {
       const next = await importTheme(selected);
-      if (isThemeRequestStale(requestId)) return;
-      applySnapshot(next, true);
+      applyThemeSnapshotIfCurrent(requestId, next);
     });
   };
 
@@ -2743,8 +2744,7 @@ export default function App() {
         handleSettingsChange({ ...settings, themeFollowSystem: false });
       }
       const next = await setTheme(themeKind);
-      if (isThemeRequestStale(requestId)) return;
-      applySnapshot(next, true);
+      applyThemeSnapshotIfCurrent(requestId, next);
     });
   };
 
@@ -2758,8 +2758,7 @@ export default function App() {
         );
       }
       const next = await setTheme(resolveOsTheme());
-      if (isThemeRequestStale(requestId)) return;
-      applySnapshot(next, true);
+      applyThemeSnapshotIfCurrent(requestId, next);
     });
   };
 
