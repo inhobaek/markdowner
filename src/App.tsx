@@ -6,6 +6,7 @@ import {
   save as saveDialog,
 } from '@tauri-apps/plugin-dialog';
 import Image from '@tiptap/extension-image';
+import Placeholder from '@tiptap/extension-placeholder';
 import { Table } from '@tiptap/extension-table';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
@@ -17,6 +18,7 @@ import { useEditor, type Editor as TiptapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtension';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
+import { publishEditorEvent } from '@/lib/editorEvents';
 import { EditorView } from '@uiw/react-codemirror';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -1325,6 +1327,21 @@ export default function App() {
       PreventTableHoverSelection,
       TaskList,
       TaskItem.configure({ nested: true }),
+      // Notion-style hint inside an empty document. Only the very first
+      // paragraph of an otherwise-empty doc shows the hint; per-node
+      // placeholders are intentionally suppressed so newly-typed blocks (h1,
+      // blockquote, list item, ...) don't flash placeholder text mid-flow.
+      Placeholder.configure({
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: false,
+        emptyEditorClass: 'is-editor-empty',
+        placeholder: ({ node }) => {
+          if (node.type.name === 'paragraph') {
+            return "Type '/' for commands, or just start writing…";
+          }
+          return '';
+        },
+      }),
       Markdown.configure({
         markedOptions: {
           gfm: true,
@@ -1379,6 +1396,43 @@ export default function App() {
         // browser — the selector lives outside ProseMirror's editable region.
         if (focusCodeBlockLanguageSelectorOnArrowUp(view, event)) {
           return true;
+        }
+        // Cmd+K (Ctrl+K on Win/Linux) — open the inline link editor at the
+        // current selection. Mirrors the convention used by Notion / Google
+        // Docs / Slack. We use the editor instance via the closure-stable ref
+        // because `view` here only exposes ProseMirror primitives, not Tiptap
+        // chain commands.
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          (event.key === 'k' || event.key === 'K')
+        ) {
+          const ed = editorInstanceRef.current;
+          if (ed) {
+            event.preventDefault();
+            const { from, to } = ed.state.selection;
+            const hasLink = ed.isActive('link');
+            if (from === to && !hasLink) {
+              // Empty caret: insert literal "link" text, select it, and
+              // apply the link mark so the popup has a target to anchor on.
+              // Matches the slash-menu Link item.
+              ed.chain()
+                .focus()
+                .insertContent('link')
+                .setTextSelection({ from, to: from + 4 })
+                .setLink({ href: 'https://' })
+                .run();
+            } else if (!hasLink) {
+              ed.chain()
+                .focus()
+                .extendMarkRange('link')
+                .setLink({ href: 'https://' })
+                .run();
+            }
+            publishEditorEvent('link:edit-request', { focusInput: true });
+            return true;
+          }
         }
         if (
           event.key !== 'PageUp' &&

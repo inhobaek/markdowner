@@ -19,6 +19,13 @@ const schema = new Schema({
       toDOM: () => ['br'],
     },
   },
+  marks: {
+    link: {
+      attrs: { href: { default: null } },
+      inclusive: false,
+      toDOM: (mark) => ['a', { href: mark.attrs.href as string }, 0],
+    },
+  },
 });
 
 function paragraph(text: string) {
@@ -77,6 +84,57 @@ describe('buildPlainTextPasteSlice', () => {
     const slice = buildPlainTextPasteSlice(schema, '');
     expect(slice.content.childCount).toBe(1);
     expect(slice.content.firstChild?.textContent).toBe('');
+  });
+
+  it('wraps URLs in link marks so pasted URLs become clickable links', () => {
+    const slice = buildPlainTextPasteSlice(
+      schema,
+      'see https://example.com for docs',
+    );
+    const para = slice.content.firstChild!;
+    // Three children: "see ", link("https://example.com"), " for docs"
+    expect(para.childCount).toBe(3);
+    expect(para.child(0).textContent).toBe('see ');
+    expect(para.child(0).marks).toHaveLength(0);
+    expect(para.child(1).textContent).toBe('https://example.com');
+    expect(para.child(1).marks).toHaveLength(1);
+    expect(para.child(1).marks[0]?.type.name).toBe('link');
+    expect(para.child(1).marks[0]?.attrs.href).toBe('https://example.com');
+    expect(para.child(2).textContent).toBe(' for docs');
+    expect(para.child(2).marks).toHaveLength(0);
+  });
+
+  it('keeps trailing punctuation outside the auto-linked URL', () => {
+    // "see https://example.com." — period should not be part of the link.
+    const slice = buildPlainTextPasteSlice(schema, 'see https://example.com.');
+    const para = slice.content.firstChild!;
+    expect(para.child(1).textContent).toBe('https://example.com');
+    expect(para.child(2).textContent).toBe('.');
+  });
+
+  it('auto-links mailto: and tel: schemes alongside http(s)', () => {
+    const slice = buildPlainTextPasteSlice(
+      schema,
+      'mail mailto:a@b.com or tel:+15555550199',
+    );
+    const para = slice.content.firstChild!;
+    const linkNodes = [];
+    for (let i = 0; i < para.childCount; i++) {
+      if (para.child(i).marks.some((m) => m.type.name === 'link')) {
+        linkNodes.push(para.child(i).textContent);
+      }
+    }
+    expect(linkNodes).toEqual(['mailto:a@b.com', 'tel:+15555550199']);
+  });
+
+  it('does not link bare words that lack an explicit scheme', () => {
+    // "example.com" without a scheme stays as plain text — conservative on
+    // purpose so domain-like filenames (e.g. `package.json`) aren't linked.
+    const slice = buildPlainTextPasteSlice(schema, 'visit example.com today');
+    const para = slice.content.firstChild!;
+    expect(para.childCount).toBe(1);
+    expect(para.child(0).marks).toHaveLength(0);
+    expect(para.child(0).textContent).toBe('visit example.com today');
   });
 });
 
