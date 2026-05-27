@@ -16,6 +16,7 @@ import { Markdown } from '@tiptap/markdown';
 import { useEditor, type Editor as TiptapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtension';
+import { ImeDebugOverlay } from '@/components/wysiwyg/ImeDebugOverlay';
 import { MarkdownLinkInputRule } from '@/components/wysiwyg/markdownLinkInputRule';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
 import { TableArrowNavigation } from '@/components/wysiwyg/tableArrowNavigation';
@@ -4186,6 +4187,7 @@ export default function App() {
       />
 
       <StatusBar {...statusBarModel} />
+      <ImeDebugOverlay />
     </div>
   );
 }

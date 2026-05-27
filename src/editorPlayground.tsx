@@ -22,6 +22,7 @@ import { useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtension';
+import { ImeDebugOverlay } from '@/components/wysiwyg/ImeDebugOverlay';
 import { MarkdownLinkInputRule } from '@/components/wysiwyg/markdownLinkInputRule';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
 import { TableArrowNavigation } from '@/components/wysiwyg/tableArrowNavigation';
@@ -175,6 +176,7 @@ function Playground() {
           <WysiwygEditorChrome editor={editor} enabled activeDocumentPath={null} />
         </div>
       </div>
+      <ImeDebugOverlay />
     </div>
   );
 }
