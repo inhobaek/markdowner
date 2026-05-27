@@ -429,6 +429,13 @@ export default function App() {
   // which the markdown-only comparison would silently skip.
   const lastEditorActiveTabIdRef = useRef<string | null>(null);
   const isWysiwygComposingRef = useRef(false);
+  // Set when the user presses Enter WHILE a CJK syllable is still composing.
+  // In WebKit (Tauri) that Enter commits the in-flight syllable but does NOT
+  // also insert a newline — the keydown is consumed by the IME. So the user
+  // types "안녕", hits Enter, sees the syllable finalize but no line break,
+  // and concludes "엔터가 안 먹는다". We remember the intent here and replay
+  // a real Enter once `compositionend` fires and the doc is stable again.
+  const pendingEnterAfterCompositionRef = useRef(false);
   const wysiwygCompositionFlushTimerRef = useRef<number | null>(null);
   // Wall-clock timestamp of the most recent WYSIWYG compositionend. Used to
   // suppress synthetic Enter keys that ProseMirror's readDOMChange dispatches
@@ -1522,6 +1529,27 @@ export default function App() {
           }
           return false;
         },
+        // DOM-level keydown sees every physical keypress, including the
+        // Enter that WebKit routes straight into the IME during composition
+        // (which never reaches ProseMirror's keymap). When that Enter lands
+        // mid-composition we record the intent so `compositionend` can
+        // replay it as a genuine newline.
+        keydown: (view: any, event: Event) => {
+          const ke = event as KeyboardEvent;
+          if (
+            ke.key === 'Enter' &&
+            !ke.shiftKey &&
+            !ke.metaKey &&
+            !ke.ctrlKey &&
+            !ke.altKey &&
+            (ke.isComposing ||
+              (view as { composing?: boolean }).composing ||
+              isWysiwygComposingRef.current)
+          ) {
+            pendingEnterAfterCompositionRef.current = true;
+          }
+          return false;
+        },
         compositionstart: () => {
           isWysiwygComposingRef.current = true;
           if (wysiwygCompositionFlushTimerRef.current !== null) {
@@ -1535,11 +1563,38 @@ export default function App() {
           lastWysiwygCompositionEndAtRef.current = Date.now();
           lastWysiwygCompositionDataRef.current =
             (event as CompositionEvent).data ?? '';
+          // Replay an Enter that was swallowed by the IME mid-composition.
+          // Deferred to a macrotask so ProseMirror has finished applying the
+          // committed composition to the doc before we split the block; the
+          // editorProps keymap's Enter chain (newlineInCode →
+          // createParagraphNear → liftEmptyBlock → splitBlock) is reproduced
+          // via Tiptap's first() so lists / code blocks / quotes behave the
+          // same as a normal Enter.
+          if (pendingEnterAfterCompositionRef.current) {
+            pendingEnterAfterCompositionRef.current = false;
+            window.setTimeout(() => {
+              const ed = editorInstanceRef.current;
+              if (!ed || currentModeRef.current !== 'Wysiwyg') return;
+              if (isWysiwygComposingRef.current || ed.view?.composing) return;
+              ed.chain()
+                .focus()
+                .command(({ commands }) =>
+                  commands.first([
+                    () => commands.newlineInCode(),
+                    () => commands.createParagraphNear(),
+                    () => commands.liftEmptyBlock(),
+                    () => commands.splitBlock(),
+                  ]),
+                )
+                .run();
+            }, 0);
+          }
           scheduleWysiwygCompositionFlush();
           return false;
         },
         compositioncancel: () => {
           isWysiwygComposingRef.current = false;
+          pendingEnterAfterCompositionRef.current = false;
           lastWysiwygCompositionEndAtRef.current = Date.now();
           lastWysiwygCompositionDataRef.current = '';
           scheduleWysiwygCompositionFlush();

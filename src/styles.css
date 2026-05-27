@@ -297,10 +297,7 @@
     caret-color: var(--foreground);
   }
   .notion-editor-content .ProseMirror > * {
-    @apply relative my-1 rounded-sm px-1 transition-colors;
-  }
-  .notion-editor-content .ProseMirror > *:hover {
-    @apply bg-muted/35;
+    @apply relative my-1 rounded-sm px-1;
   }
   /* Heading sizes are scoped here in `em` so they scale with the editor's
      base font-size. Approximate the previous Tailwind values
