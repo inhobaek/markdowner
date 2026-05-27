@@ -19,6 +19,7 @@ import { createCodeBlockExtension } from '@/components/wysiwyg/codeBlockExtensio
 import { MarkdownLinkInputRule } from '@/components/wysiwyg/markdownLinkInputRule';
 import { PreventTableHoverSelection } from '@/components/wysiwyg/preventTableHoverSelection';
 import { publishEditorEvent } from '@/lib/editorEvents';
+import { imeLog } from '@/lib/imeDebug';
 import { EditorView } from '@uiw/react-codemirror';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -1503,14 +1504,24 @@ export default function App() {
       handleTextInput: (view: any, from: number, to: number, text: string) => {
         // CJK IME duplicate-syllable guard. See wysiwygKeyboard tests for the
         // exact shape and false-positive constraints.
-        if (shouldSuppressDuplicateImeTextInput({
+        const suppressed = shouldSuppressDuplicateImeTextInput({
           from,
           to,
           text,
           isComposing: isWysiwygComposingRef.current,
           lastCompositionEndAt: lastWysiwygCompositionEndAtRef.current,
           textBetween: view.state.doc.textBetween.bind(view.state.doc),
-        })) {
+        });
+        imeLog('handleTextInput', view, {
+          from,
+          to,
+          text,
+          suppressed,
+          inTable: view.state?.selection?.$from?.node
+            ? view.state.selection.$from.parent.type.name
+            : undefined,
+        });
+        if (suppressed) {
           return true;
         }
         return false;
@@ -1536,26 +1547,41 @@ export default function App() {
         // replay it as a genuine newline.
         keydown: (view: any, event: Event) => {
           const ke = event as KeyboardEvent;
+          const composingNow =
+            ke.isComposing ||
+            (view as { composing?: boolean }).composing ||
+            isWysiwygComposingRef.current;
+          if (ke.key === 'Enter') {
+            imeLog('keydown Enter', view, {
+              isComposing: ke.isComposing,
+              viewComposing: (view as { composing?: boolean }).composing,
+              refComposing: isWysiwygComposingRef.current,
+              isTrusted: ke.isTrusted,
+            });
+          }
           if (
             ke.key === 'Enter' &&
             !ke.shiftKey &&
             !ke.metaKey &&
             !ke.ctrlKey &&
             !ke.altKey &&
-            (ke.isComposing ||
-              (view as { composing?: boolean }).composing ||
-              isWysiwygComposingRef.current)
+            composingNow
           ) {
             pendingEnterAfterCompositionRef.current = true;
           }
           return false;
         },
-        compositionstart: () => {
+        compositionstart: (view: any) => {
           isWysiwygComposingRef.current = true;
+          imeLog('compositionstart', view);
           if (wysiwygCompositionFlushTimerRef.current !== null) {
             window.clearTimeout(wysiwygCompositionFlushTimerRef.current);
             wysiwygCompositionFlushTimerRef.current = null;
           }
+          return false;
+        },
+        compositionupdate: (view: any, event: Event) => {
+          imeLog('compositionupdate', view, { data: (event as CompositionEvent).data });
           return false;
         },
         compositionend: (_view: any, event: Event) => {
@@ -1563,6 +1589,10 @@ export default function App() {
           lastWysiwygCompositionEndAtRef.current = Date.now();
           lastWysiwygCompositionDataRef.current =
             (event as CompositionEvent).data ?? '';
+          imeLog('compositionend', _view, {
+            data: (event as CompositionEvent).data,
+            pendingEnter: pendingEnterAfterCompositionRef.current,
+          });
           // Replay an Enter that was swallowed by the IME mid-composition.
           // Deferred to a macrotask so ProseMirror has finished applying the
           // committed composition to the doc before we split the block; the
@@ -3709,13 +3739,26 @@ export default function App() {
   };
 
   // Cmd+W / File → Close:
-  // - 0 tabs (nothing open): close the window directly. There is nothing to
-  //   be dirty about, so skip the close confirmation flow entirely.
+  // - 0 tabs (nothing open): hide the window rather than destroy it. macOS
+  //   convention is that ⌘W closes the *window* but leaves the app running
+  //   in the dock — destroying the only window made Tauri tear the whole
+  //   process down. Hiding keeps the app alive; the Rust `Reopen` handler
+  //   re-shows the window when the user clicks the dock icon. We fall back to
+  //   destroy() only when hide() is unavailable (older Tauri / test mocks
+  //   that don't stub it) so the close still happens.
   // - 1+ tabs: close the active tab. The final tab leaves the window open on
   //   the empty document surface after any required dirty confirmation.
   const handleCloseTabOrWindow = useEffectEvent(async () => {
     if (tabs.length === 0) {
-      await getCurrentWindow().destroy();
+      const win = getCurrentWindow() as {
+        hide?: () => Promise<void>;
+        destroy: () => Promise<void>;
+      };
+      if (typeof win.hide === 'function') {
+        await win.hide();
+      } else {
+        await win.destroy();
+      }
       return;
     }
 

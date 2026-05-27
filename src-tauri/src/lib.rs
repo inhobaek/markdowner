@@ -1736,8 +1736,26 @@ pub fn run() {
             link_actions::open_external_url,
             link_actions::open_path_in_default_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Markdowner desktop shell");
+        .build(tauri::generate_context!())
+        .expect("error while running Markdowner desktop shell")
+        .run(|app_handle, event| {
+            // macOS: clicking the dock icon while the only window is hidden
+            // (the user pressed ⌘W on an empty workspace) must bring the
+            // window back. Tauri surfaces that as a Reopen event; re-show and
+            // focus every window the app owns.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                for (_, window) in app_handle.webview_windows() {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = app_handle;
+                let _ = event;
+            }
+        });
 }
 
 #[cfg(test)]

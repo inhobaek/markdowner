@@ -34,6 +34,7 @@ const openDialogMock = vi.fn();
 const saveDialogMock = vi.fn();
 const messageMock = vi.fn();
 const destroyWindowMock = vi.fn();
+const hideWindowMock = vi.fn();
 const startDraggingMock = vi.fn();
 const onCloseRequestedMock = vi.fn();
 const onDragDropEventMock = vi.fn().mockImplementation(() => Promise.resolve(vi.fn()));
@@ -82,6 +83,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
     destroy: destroyWindowMock,
+    hide: hideWindowMock,
     startDragging: startDraggingMock,
     onCloseRequested: onCloseRequestedMock,
     onDragDropEvent: onDragDropEventMock,
@@ -424,6 +426,7 @@ describe('App recent documents', () => {
     saveDialogMock.mockReset();
     messageMock.mockReset();
     destroyWindowMock.mockReset();
+    hideWindowMock.mockReset();
     startDraggingMock.mockReset();
     onCloseRequestedMock.mockReset();
     onDragDropEventMock.mockReset();
@@ -7397,10 +7400,12 @@ describe('App recent documents', () => {
     expect(messageMock).not.toHaveBeenCalled();
   });
 
-  it('closes the window with Cmd+W when no tabs are open', async () => {
+  it('hides the window (keeps the app in the dock) with Cmd+W when no tabs are open', async () => {
     // Empty-state bootstrap (no active document, no persisted tabs) means the
-    // tab list is empty. Cmd+W must short-circuit straight to window.destroy()
-    // — there is nothing dirty to prompt about. Regression for FR-TABS-003.
+    // tab list is empty. Cmd+W must close the *window* without quitting the
+    // app — macOS convention keeps the app alive in the dock. We hide() the
+    // window rather than destroy() it (which tore the whole process down).
+    // There is nothing dirty to prompt about. Regression for FR-TABS-003.
     bootstrapMock.mockResolvedValue(baseSnapshot());
 
     const { default: App } = await import('./App');
@@ -7412,8 +7417,9 @@ describe('App recent documents', () => {
     fireEvent.keyDown(window, { key: 'w', metaKey: true });
 
     await waitFor(() => {
-      expect(destroyWindowMock).toHaveBeenCalled();
+      expect(hideWindowMock).toHaveBeenCalled();
     });
+    expect(destroyWindowMock).not.toHaveBeenCalled();
     expect(messageMock).not.toHaveBeenCalled();
   });
 
