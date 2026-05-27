@@ -152,6 +152,20 @@ export function LinkPopup({
         frame = null;
         // Hover-mode wins until the mouse leaves the link.
         if (hoveredLinkRef.current) return;
+        // If focus has moved INTO the popup itself (the user clicked the URL
+        // input or an action button), the editor's `blur` fired this
+        // schedule — but we must NOT close the popup, otherwise clicking the
+        // input to edit the URL instantly dismisses the very thing the user
+        // is trying to use. This was the core "링크 주소 편집이 안 돼요"
+        // bug: editor blur → computeCaretLink returns null (no editor focus)
+        // → caret popup closed before the input could receive a keystroke.
+        if (
+          typeof document !== 'undefined' &&
+          containerRef.current &&
+          containerRef.current.contains(document.activeElement)
+        ) {
+          return;
+        }
         const next = computeCaretLink();
         if (!next) {
           setState((prev) =>

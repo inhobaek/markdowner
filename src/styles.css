@@ -352,21 +352,30 @@
      a floor that sits above the line-height result at default font. */
   .notion-editor-content .ProseMirror p {
     @apply my-1 px-1;
+    /* `1lh` resolves to the computed line-height in modern WebKit. We also
+       set a flat `1.5em` floor in case a given build doesn't honour the `lh`
+       unit, so an empty paragraph can never collapse to zero height. */
+    min-height: 1.5em;
     min-height: 1lh;
   }
   /* Empty textblocks (a brand-new file, or the trailing paragraph TrailingNode
      appends after a heading / code block / blockquote / table) contain only a
      synthetic <br class="ProseMirror-trailingBreak">. In WKWebView that BR's
      line box collapses to zero height at the tail of an otherwise empty
-     contenteditable, and the blinking caret disappears with it. Styling the BR
-     directly (display: inline-block + height: 1lh) wasn't enough — the line
-     box still has no baselined inline content for WebKit to anchor the caret
-     to. Inject a real character (U+200B ZERO WIDTH SPACE) as ::before content
-     so the paragraph has a baselined glyph the caret can sit on top of. The
-     ZWSP is non-printing, occupies no horizontal space, and inherits the
-     paragraph's font/line-height so it scales with the editor settings. */
+     contenteditable, and the blinking caret disappears with it — which also
+     makes pressing Enter *look* like nothing happened, because the freshly
+     created empty paragraph (and the caret now sitting in it) has no height.
+     Two defences, neither relying on `:has()` support alone:
+       1. A ZWSP ::before on the trailing-break paragraph gives WebKit a
+          baselined glyph to anchor the caret to.
+       2. A direct rule on the synthetic <br> forces it to occupy a full
+          line box even when `:has()` isn't available. */
   .notion-editor-content .ProseMirror p:has(> br.ProseMirror-trailingBreak:only-child)::before {
     content: "\200B";
+  }
+  .notion-editor-content .ProseMirror br.ProseMirror-trailingBreak {
+    display: inline-block;
+    min-height: 1.2em;
   }
   .notion-editor-content .ProseMirror ul,
   .notion-editor-content .ProseMirror ol {
@@ -423,7 +432,11 @@
     pointer-events: none;
     position: absolute;
     inset: 0;
-    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    /* Subtle tint only — a heavy fill made text typed in a freshly-selected
+       cell read as "inverted". Single-cell selections are normalised to a
+       plain text caret by the PreventTableHoverSelection extension, so this
+       overlay now only appears for intentional multi-cell drags. */
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
   }
   .notion-editor-content .ProseMirror .selectedCell {
     position: relative;
