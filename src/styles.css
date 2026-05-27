@@ -374,6 +374,23 @@
     display: inline-block;
     min-height: 1.2em;
   }
+  /* …but NOT inside table cells. WebKit anchors in-progress IME composition
+     relative to pseudo-element content and `inline-block` line boxes; on an
+     empty cell paragraph the ZWSP ::before + display:inline-block trailing
+     break confused that anchoring and the first committed Korean syllable
+     landed at the wrong offset ("안녕하세요" → "녕하세요안"). Cells already
+     have a visible line box from their padding, so they never needed these
+     caret-visibility hacks — strip them back to the browser default inside
+     td/th so composition anchors cleanly. */
+  .notion-editor-content .ProseMirror td p:has(> br.ProseMirror-trailingBreak:only-child)::before,
+  .notion-editor-content .ProseMirror th p:has(> br.ProseMirror-trailingBreak:only-child)::before {
+    content: none;
+  }
+  .notion-editor-content .ProseMirror td br.ProseMirror-trailingBreak,
+  .notion-editor-content .ProseMirror th br.ProseMirror-trailingBreak {
+    display: inline;
+    min-height: 0;
+  }
   .notion-editor-content .ProseMirror ul,
   .notion-editor-content .ProseMirror ol {
     @apply my-1 pl-7;
