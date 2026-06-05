@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "node scripts/build.mjs",
     "sync-version": "node scripts/sync-version.mjs",
+    "bump": "node scripts/bump-version.mjs",
     "build:debug": "pnpm build debug",
     "build:install": "pnpm build install",
     "build:install:open": "pnpm build install open",
