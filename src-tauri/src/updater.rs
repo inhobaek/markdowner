@@ -139,6 +139,106 @@ pub fn check_for_update(app_handle: tauri::AppHandle) -> Result<UpdateInfo, Stri
     build_update_info(&current, &json)
 }
 
+use std::path::{Path, PathBuf};
+
+/// Locate the `.app` bundle that contains the running executable.
+fn app_bundle_path() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe failed: {e}"))?;
+    let bundle = exe
+        .ancestors()
+        .find(|p| p.extension().map(|ext| ext == "app").unwrap_or(false))
+        .ok_or("Could not locate the .app bundle from the current executable")?;
+    Ok(bundle.to_path_buf())
+}
+
+/// Probe whether we can write into `dir` by creating and removing a temp file.
+fn is_dir_writable(dir: &Path) -> bool {
+    let probe = dir.join(".markdowner-write-probe");
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Generate the detached installer script. It waits for the running app
+/// (`pid`) to exit, then mounts the DMG, replaces the bundle, clears the
+/// Gatekeeper quarantine attribute, and relaunches. Mirrors `install.sh`.
+fn render_install_script(dmg_path: &str, app_bundle: &str, pid: u32) -> String {
+    format!(
+        r#"#!/bin/bash
+APP_PID={pid}
+DMG="{dmg}"
+DEST="{dest}"
+while kill -0 "$APP_PID" 2>/dev/null; do sleep 0.2; done
+MOUNT=$(hdiutil attach "$DMG" -nobrowse -readonly -noverify | awk -F'\t' '$NF ~ "^/Volumes/" {{print $NF}}' | tail -n1)
+if [ -n "$MOUNT" ] && [ -d "$MOUNT/Markdowner.app" ]; then
+  rm -rf "$DEST"
+  ditto "$MOUNT/Markdowner.app" "$DEST"
+  xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
+  hdiutil detach "$MOUNT" -quiet 2>/dev/null || hdiutil detach "$MOUNT" -force -quiet 2>/dev/null || true
+fi
+open "$DEST"
+rm -f "$DMG"
+"#,
+        pid = pid,
+        dmg = dmg_path,
+        dest = app_bundle,
+    )
+}
+
+#[tauri::command]
+pub fn download_and_install_update(
+    dmg_url: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let bundle = app_bundle_path()?;
+    let bundle_str = bundle.to_string_lossy().to_string();
+
+    let tmp_dir = std::env::temp_dir();
+    let dmg_path = tmp_dir.join("markdowner-update.dmg");
+    let dmg_str = dmg_path.to_string_lossy().to_string();
+
+    // Download the DMG (curl follows redirects to the release asset).
+    let status = std::process::Command::new("curl")
+        .args(["-fL", "--silent", "--show-error", "-o", &dmg_str, &dmg_url])
+        .status()
+        .map_err(|e| format!("Failed to run curl: {e}"))?;
+    if !status.success() {
+        return Err(format!("Download failed (curl status {status})"));
+    }
+
+    // If we cannot write the install location, fall back to manual install:
+    // open the downloaded DMG in Finder and leave the app running.
+    let parent = bundle.parent().ok_or("Bundle has no parent directory")?;
+    if !is_dir_writable(parent) {
+        std::process::Command::new("open")
+            .arg(&dmg_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open DMG: {e}"))?;
+        return Ok(());
+    }
+
+    // Stage and launch the detached installer, then quit so it can swap the
+    // bundle we are running from.
+    let script = render_install_script(&dmg_str, &bundle_str, std::process::id());
+    let script_path = tmp_dir.join("markdowner-update.sh");
+    std::fs::write(&script_path, script).map_err(|e| format!("Failed to write installer: {e}"))?;
+
+    std::process::Command::new("/bin/bash")
+        .arg(&script_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to launch installer: {e}"))?;
+
+    app_handle.exit(0);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +314,25 @@ mod tests {
         let info = build_update_info("0.260528.2", json).unwrap();
         assert!(info.available);
         assert_eq!(info.dmg_url, None);
+    }
+
+    #[test]
+    fn install_script_includes_quarantine_clear_and_relaunch() {
+        let script = render_install_script(
+            "/tmp/markdowner-update.dmg",
+            "/Applications/Markdowner.app",
+            4321,
+        );
+        // The interpolated paths land in the variable definitions...
+        assert!(script.contains("APP_PID=4321"));
+        assert!(script.contains("DMG=\"/tmp/markdowner-update.dmg\""));
+        assert!(script.contains("DEST=\"/Applications/Markdowner.app\""));
+        // ...and the commands reference them by variable.
+        assert!(script.contains("hdiutil attach \"$DMG\""));
+        assert!(script.contains("ditto \"$MOUNT/Markdowner.app\" \"$DEST\""));
+        assert!(script.contains("xattr -dr com.apple.quarantine \"$DEST\""));
+        assert!(script.contains("open \"$DEST\""));
+        // Waits for the running app to exit before swapping the bundle.
+        assert!(script.contains("kill -0 \"$APP_PID\""));
     }
 }

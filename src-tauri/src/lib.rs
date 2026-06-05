@@ -1737,6 +1737,7 @@ pub fn run() {
             link_actions::open_external_url,
             link_actions::open_path_in_default_app,
             updater::check_for_update,
+            updater::download_and_install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while running Markdowner desktop shell")
