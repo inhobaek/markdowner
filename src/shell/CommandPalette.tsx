@@ -9,7 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { fuzzyScore, stripToAscii } from '@/lib/fuzzy';
+import { fuzzyScore } from '@/lib/fuzzy';
+import { hangulToQwerty } from '@/lib/hangulQwerty';
 
 export interface CommandPaletteCommand {
   id: string;
@@ -37,10 +38,17 @@ function filterCommands(
   if (!trimmed) {
     return commands.slice(0, MAX_RESULTS);
   }
+  // Match the query as typed and as its QWERTY romanization, so wrong-IME
+  // Korean input (e.g. `샣힏`) scores the same as the English keys (`toggle`).
+  // ASCII input romanizes to itself, so English search is unaffected.
+  const romanized = hangulToQwerty(trimmed);
   const scored: Array<{ command: CommandPaletteCommand; score: number; order: number }> = [];
   commands.forEach((command, order) => {
     const haystack = `${command.label} ${command.category ?? ''}`;
-    const score = fuzzyScore(haystack, trimmed);
+    const score = Math.max(
+      fuzzyScore(haystack, trimmed),
+      romanized === trimmed ? 0 : fuzzyScore(haystack, romanized),
+    );
     if (score > 0) {
       scored.push({ command, score, order });
     }
@@ -144,20 +152,13 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
           <Input
             autoFocus
             value={query}
-            onChange={(event) => setQuery(stripToAscii(event.target.value))}
-            onCompositionEnd={(event) => {
-              const stripped = stripToAscii((event.target as HTMLInputElement).value);
-              if (stripped !== (event.target as HTMLInputElement).value) {
-                setQuery(stripped);
-              }
-            }}
+            onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a command…"
             aria-label="Command palette search"
             aria-controls={listboxId}
             aria-activedescendant={activeOptionId}
             aria-autocomplete="list"
-            lang="en"
             inputMode="text"
             className="h-9 border-0 shadow-none focus-visible:ring-0 px-1"
           />

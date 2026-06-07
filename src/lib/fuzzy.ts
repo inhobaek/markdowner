@@ -5,8 +5,8 @@
  * in order (not necessarily consecutively); higher scores reflect tighter,
  * earlier, and more contiguous matches. Returns 0 when there is no match.
  *
- * Matching is case-insensitive and ASCII-only on the query side — callers are
- * expected to strip non-ASCII characters from user input before calling.
+ * Matching is case-insensitive. Callers that need wrong-IME tolerance
+ * (e.g. the Command Palette) romanize the query before scoring.
  */
 export function fuzzyScore(haystack: string, query: string): number {
   if (query.length === 0) return 1;
@@ -72,20 +72,4 @@ export function fuzzyScore(haystack: string, query: string): number {
 
   // Slightly prefer shorter haystacks for ties.
   return score + Math.max(0, 4 - Math.floor(haystack.length / 16));
-}
-
-/**
- * Strip non-ASCII letters/digits and common punctuation from user input.
- * Used by the Command Palette to enforce English-only input regardless of
- * the active OS IME — Korean Hangul, CJK, accented Latin etc. are filtered.
- */
-export function stripToAscii(input: string): string {
-  let out = '';
-  for (let i = 0; i < input.length; i++) {
-    const code = input.charCodeAt(i);
-    if (code < 0x80) {
-      out += input[i];
-    }
-  }
-  return out;
 }

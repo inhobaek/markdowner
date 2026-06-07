@@ -43,4 +43,14 @@ describe('hangulToQwerty', () => {
     // "ㅅ뮤ㅣㄷ123" -> "table123"
     expect(hangulToQwerty('ㅅ뮤ㅣㄷ123')).toBe('table123');
   });
+
+  it('maps Korean-IME "toggle" (샣힏) back to "toggle"', () => {
+    // 샣 = ㅅㅐㅎ -> tog, 힏 = ㅎㅣㄷ -> gle
+    expect(hangulToQwerty('샣힏')).toBe('toggle');
+  });
+
+  it('maps a partial Korean-IME "toggle" (샣ㅎ) to "togg"', () => {
+    // 샣 -> tog, trailing standalone ㅎ -> g
+    expect(hangulToQwerty('샣ㅎ')).toBe('togg');
+  });
 });
