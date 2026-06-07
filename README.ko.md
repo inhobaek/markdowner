@@ -1,5 +1,8 @@
 # Markdowner
 
+[![최신 버전](https://img.shields.io/github/v/release/channprj/markdowner?label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84)](https://github.com/channprj/markdowner/releases/latest)
+[![누적 다운로드](https://img.shields.io/github/downloads/channprj/markdowner/total?label=%EB%88%84%EC%A0%81%20%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C)](https://github.com/channprj/markdowner/releases)
+
 [English README](README.md)
 
 Markdowner는 `Tauri v2`, `React`, `Vite`, `Tiptap` 기반으로 구성된 Rust 중심 Markdown 데스크톱 에디터입니다. 현재 저장소에는 macOS에서 실제로 실행 가능한 데스크톱 셸, 공유 Rust 문서 코어, 그리고 향후 Windows 빌드를 위한 첫 번째 크로스플랫폼 기반이 포함되어 있습니다.

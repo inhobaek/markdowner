@@ -1,5 +1,8 @@
 # Markdowner
 
+[![Release](https://img.shields.io/github/v/release/channprj/markdowner?label=release)](https://github.com/channprj/markdowner/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/channprj/markdowner/total?label=downloads)](https://github.com/channprj/markdowner/releases)
+
 [한국어 README](README.ko.md)
 
 Markdowner is a Rust-first Markdown editor desktop app built with `Tauri v2`, `React`, `Vite`, and `Tiptap`. The current repository now includes a runnable macOS desktop shell, a shared Rust document core, and the first cross-platform foundation for a future Windows build.
