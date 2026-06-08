@@ -24,4 +24,20 @@ describe('UpdateBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss update notification' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the current-version state without an update action', () => {
+    const onDismiss = vi.fn();
+    render(
+      <UpdateBanner
+        variant="current"
+        latestVersion="0.260601.0"
+        onDismiss={onDismiss}
+      />,
+    );
+
+    expect(screen.getByText(/already on the latest version/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View release' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss update notification' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
 });

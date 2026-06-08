@@ -6945,7 +6945,7 @@ describe('App recent documents', () => {
     expect(within(dialog).getByLabelText(/font family/i)).toHaveValue('');
   });
 
-  it('shows a toast when a manual update check is already on the latest version', async () => {
+  it('shows the update banner when a manual update check is already on the latest version', async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'load_settings') {
         return {
@@ -6980,7 +6980,8 @@ describe('App recent documents', () => {
     const panel = await screen.findByTestId('settings-panel');
     fireEvent.click(within(panel).getByTestId('settings-update-check'));
 
-    expect(await screen.findByText("You're already on the latest version! 🎉")).toBeInTheDocument();
+    const banner = await screen.findByTestId('update-banner');
+    expect(within(banner).getByText(/already on the latest version/i)).toBeInTheDocument();
   });
 
   it('exposes a descriptive tooltip on the Settings dialog Reset to Defaults button', async () => {
