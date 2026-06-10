@@ -1,255 +1,157 @@
 # Markdowner
 
-[![Release](https://img.shields.io/github/v/release/channprj/markdowner?label=release)](https://github.com/channprj/markdowner/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/channprj/markdowner/total?label=downloads)](https://github.com/channprj/markdowner/releases)
+<p align="center">
+  <img src="./assets/images/og.png" alt="Markdowner - The Markdown editor built for you and your coding agent." width="100%">
+</p>
 
-[한국어 README](README.ko.md)
+<p align="center">
+  <a href="https://github.com/channprj/markdowner/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/channprj/markdowner?label=release"></a>
+  <a href="https://github.com/channprj/markdowner/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/channprj/markdowner/total?label=downloads"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/channprj/markdowner"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-111111">
+</p>
 
-Markdowner is a Rust-first Markdown editor desktop app built with `Tauri v2`, `React`, `Vite`, and `Tiptap`. The current repository now includes a runnable macOS desktop shell, a shared Rust document core, and the first cross-platform foundation for a future Windows build.
+<p align="center">
+  <a href="https://markdowner.chann.dev">Website</a>
+  ·
+  <a href="https://github.com/channprj/markdowner/releases/latest">Download</a>
+  ·
+  <a href="./README.ko.md">Korean README</a>
+</p>
 
-## Current Status
+Markdowner is a local-first Markdown editor for macOS, built for people who want a polished writing surface without giving up plain `.md` files. It combines WYSIWYG editing, source editing, workspace navigation, and a Rust document core that keeps Markdown as the source of truth.
 
-- macOS local development run works through `pnpm tauri dev`
-- macOS local debug build works through `pnpm tauri build --debug`
-- macOS no-cost DMG distribution works through `pnpm build:mac:dmg` with ad-hoc signing
-- the app shell includes file open, folder open, save, command palette, quick open, mode switching, theme switching, drag-and-drop open, and a Rust command bridge to `markdowner-core`
-- document outlines are shown in the side panel with jump-to-line support
-- shell reliability includes atomic writes, external-change detection, and ErrorBoundary fallback
-- Windows is still a follow-up target, but the app architecture is now aligned for the same Tauri app shell
+The app is also designed to work well as the editor that coding agents and command-line tools can open when they need a human to edit a buffer, review a note, or finish a commit message.
 
-## Development Progress Snapshot
+## Highlights
 
-As of 2026-05-05, Markdowner is best described as a macOS developer-preview app with a strong local-first foundation. The core desktop loop is usable: open a Markdown file or workspace, edit in WYSIWYG/Source/Split View, save safely, reopen recent files, switch themes, and recover from common external-change conflicts. Against the current v1 product ambition, the repository is roughly 60-65% complete: the shell, core file model, settings persistence, and common Markdown round-trip path are in place, while authoring power features, export, search, packaging polish, and Windows validation remain open.
+- **Markdown-native editing**: WYSIWYG, source editor, and split view all work against Markdown files rather than a proprietary document format.
+- **Local desktop shell**: open files or folders, manage tabs, save safely, restore sessions, and handle files through the native macOS app.
+- **Workspace navigation**: file tree, Quick Open, command palette, outline panel, workspace search, document stats, and recent documents.
+- **Writing ergonomics**: find and replace, minimap, word wrap controls, wrap guide, focus mode, typewriter mode, table editing, code blocks, checklists, and image/link support.
+- **Safer file writes**: atomic saves, dirty-close confirmation, read-only file handling, and external-change detection with reload/keep-local flows.
+- **Customizable reading and editing**: built-in light/dark themes, system-theme following, imported CSS themes, editor font controls, table density, and code-block theme settings.
+- **Agent-friendly CLI integration**: install the `mdner` command and set `EDITOR` / `VISUAL` so terminal tools can open Markdowner directly.
+- **Release-aware app**: update checks read GitHub Releases, and the public release workflow builds a universal macOS DMG.
 
-Completed or solid:
+## Install
 
-- Tauri v2 desktop shell with React 19, Vite 7, TypeScript, Tiptap, CodeMirror, React Markdown, and shadcn-style UI components
-- Rust workspace with `markdowner-core`, the Tauri bridge in `src-tauri`, and the older `markdowner-macos` reference crate
-- File lifecycle: new document, open file, open workspace, Save, Save As, recent documents, CLI path opening, single-instance routing, drag-and-drop file/folder opening, native menu command events
-- Safety model: atomic writes, read-only file protection, external disk-change detection, compare/reload/keep-local flow, dirty close confirmation, session restore
-- Navigation and shell UX: Activity Bar, resizable/collapsible sidebar, workspace tree, file-name filtering, Quick Open, Command Palette, Outline panel, document stats, status bar metadata
-- Markdown coverage for headings, paragraphs, quotes, bullets, checklists, images, tables, fenced code blocks, links, emphasis, inline code, and raw-preserved unsupported blocks
-- Settings persistence and runtime behavior for autosave, editor font, word wrap, startup mode, focus/typewriter writing aids, system theme following, and diagnostics logging; asset folder and PDF paper size preferences are stored for follow-on export/asset workflows
-- Custom CSS theme import with validation plus frontend scoping to Markdown content surfaces
+Markdowner currently ships for macOS.
 
-Partially complete:
+Download the latest DMG from:
 
-- Asset folder and PDF paper size are persisted in settings, but their full runtime behaviors are waiting on the image asset and export workflows
-- Code highlighting exists in the Rust core model for known code fences, but frontend preview/WYSIWYG highlighting policy still needs product-level polish
-- macOS DMG generation is enabled for no-cost direct distribution, but paid Developer ID signing/notarization and release metadata are not complete
-- Test coverage is meaningful at the Rust core and React shell levels, but there is no full desktop E2E, screenshot regression, or automated accessibility gate yet
-
-Not implemented yet:
-
-- In-document Find &amp; Replace
-- Slash command menu
-- KaTeX math and Mermaid diagram rendering
-- HTML/PDF/Print export
-- Workspace full-text search
-- Image paste/drop asset copying and relative-path insertion
-- Automatic backups before overwrite
-- Window size/position restore
-- Windows build/test/release validation
-
-## Feature Summary
-
-- WYSIWYG editing surface powered by Tiptap
-- Source mode powered by CodeMirror 6
-- Preview mode powered by React Markdown + GFM rendering
-- File open and save through the desktop shell
-- Command palette (`⌘⇧P`) and quick open (`⌘P`) for rapid navigation
-- Workspace folder opening and file tree navigation
-- Document stats dialog and outline panel
-- Support for images, tables, checklists, and fenced code blocks
-- Built-in light and dark themes plus user CSS theme import
-- Settings panel with font, wrapping, autosave, startup mode, theme-following, asset, PDF, and diagnostics preferences
-- Rust `markdowner-core` remains the canonical Markdown/document layer
-
-## Repository Layout
-
-- `crates/markdowner-core`: Markdown parsing and serialization, document model, themes, workspace state, and runtime logic
-- `crates/markdowner-macos`: earlier macOS shell/reference crate kept for boundary and regression coverage
-- `src`: React/Vite frontend shell
-- `src-tauri`: Tauri desktop shell, Rust command bridge, and app configuration
-- `docs/architecture/core-platform-boundary.md`: notes on the core/platform split
-
-## macOS Development Environment
-
-Markdowner has been verified locally on macOS with the following toolchain available:
-
-- `Node.js v22.20.0`
-- `pnpm v10.33.0`
-- `cargo 1.94.0`
-- `rustc 1.94.0`
-- Xcode Command Line Tools available through `xcode-select`
-
-Minimum setup checklist:
-
-1. Install a recent Rust toolchain
-2. Install Node.js and pnpm
-3. Install Xcode Command Line Tools
-
-Example check commands:
-
-```bash
-node -v
-pnpm -v
-cargo -V
-rustc -V
-xcode-select -p
-xcrun --version
+```text
+https://github.com/channprj/markdowner/releases/latest
 ```
 
-## Install Dependencies
+Or install the latest release from the terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/channprj/markdowner/main/install.sh | bash
+```
+
+To install and launch immediately:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/channprj/markdowner/main/install.sh | MARKDOWNER_OPEN=1 bash
+```
+
+The installer downloads the latest matching `.dmg` asset, mounts it, copies `Markdowner.app` into `/Applications`, and clears the local quarantine attribute for the installed bundle.
+
+> Markdowner uses ad-hoc signing for no-cost distribution today. Developer ID signing and notarization are planned, so macOS may still require manual approval from System Settings on first launch after a downloaded install.
+
+## Quick Start
+
+1. Launch Markdowner.
+2. Open a Markdown file with `Cmd+O`, or open a folder with `Cmd+Shift+O`.
+3. Switch modes with `Opt+1` for WYSIWYG, `Opt+2` for Editor, and `Opt+3` for Split View.
+4. Use `Cmd+P` for Quick Open and `Cmd+Shift+P` for the command palette.
+5. Save with `Cmd+S`.
+
+Useful shortcuts:
+
+| Action | Shortcut |
+| --- | --- |
+| Quick Open | `Cmd+P` |
+| Command Palette | `Cmd+Shift+P` |
+| Find in Current File | `Cmd+F` |
+| Search in Workspace | `Cmd+Shift+F` |
+| Toggle Sidebar | `Cmd+Shift+B` |
+| Toggle Outline | `Cmd+Shift+D` |
+| Toggle Focus Mode | `Cmd+Shift+J` |
+| Toggle Typewriter Mode | `Cmd+Shift+Y` |
+| Toggle Word Wrap | `Option+Z` |
+
+## CLI Integration
+
+Markdowner can install a small `mdner` launcher so command-line tools can open files or folders in the desktop app:
+
+```bash
+mdner README.md
+mdner path/to/project
+```
+
+From the app, open **Settings** and use the CLI sections to:
+
+- install or remove `/usr/local/bin/mdner`
+- add a managed shell snippet for `EDITOR="mdner"` and `VISUAL="mdner"`
+- verify whether the command is available on your shell `PATH`
+
+This is useful with tools that spawn `$EDITOR` for commit messages, prompts, notes, or review buffers.
+
+## Development
+
+Markdowner is built with Tauri v2, React 19, Vite, TypeScript, Tiptap, CodeMirror 6, Tailwind CSS, and a Rust workspace.
+
+Recommended local toolchain:
+
+- Node.js 22+
+- pnpm 10+
+- Rust stable
+- Xcode Command Line Tools on macOS
+
+Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-If `pnpm install` warns about ignored build scripts in your environment, approve the required builds and rerun install:
-
-```bash
-pnpm approve-builds
-pnpm install
-```
-
-## Local Development Run on macOS
-
-Start the desktop app in development mode:
+Run the desktop app in development mode:
 
 ```bash
 pnpm tauri dev
 ```
 
-What this does:
+The Vite dev server is pinned to `http://127.0.0.1:14238` with `strictPort` enabled so it does not silently attach to another local app.
 
-- starts the Vite dev server on `http://127.0.0.1:14238`
-- compiles the Tauri Rust shell
-- launches the local debug desktop executable
+## Build
 
-This command was verified locally in this repository. During startup, Tauri runs `pnpm dev` first, then runs the Rust desktop app from `target/debug/markdowner-desktop`.
-
-If `pnpm tauri dev` fails immediately, first check whether port `14238` is already in use. Markdowner binds the Vite dev server to `127.0.0.1:14238` with `strictPort` enabled so it does not silently attach to another project's dev server.
-
-## Local Build on macOS
-
-### Build the Rust workspace
-
-```bash
-cargo build
-```
-
-On a fresh machine, the first Rust build downloads crate dependencies from crates.io and can take noticeably longer than subsequent builds.
-
-### Build the frontend bundle
-
-```bash
-pnpm build
-```
-
-### Build the local Tauri debug app
-
-```bash
-pnpm tauri build --debug
-```
-
-Verified output path:
-
-```bash
-target/debug/markdowner-desktop
-```
-
-## Build and Install Commands (macOS)
-
-Use `pnpm build` for the normal frontend production build. Add build subcommands when you want a Tauri bundle, local install, or launch-after-install flow.
+Common commands:
 
 ```bash
 pnpm build                         # type-check and build the frontend
 pnpm build debug                   # debug Tauri build
 pnpm build dmg                     # release DMG with ad-hoc signing
-pnpm build universal dmg           # universal Apple Silicon + Intel DMG
-pnpm build install                 # release Tauri build, install to /Applications
+pnpm build universal dmg           # Apple Silicon + Intel universal DMG
+pnpm build install                 # build and install to /Applications
 pnpm build install open            # install, then launch the installed app
-pnpm build debug install open      # debug build, install, then launch
 pnpm build:install:open            # package-script alias for install + open
 pnpm build:mac:dmg                 # package-script alias for release DMG
 pnpm build:mac:universal:dmg       # package-script alias for universal DMG
 ```
 
-Install options:
+Install path overrides:
 
 ```bash
 MARKDOWNER_INSTALL_PATH=~/Applications pnpm build install
 pnpm build install -- --path ~/Applications
-pnpm build install -- --no-build   # install an already-built bundle
-pnpm build install -- --open       # flag form of "open"
+pnpm build install -- --no-build
+pnpm build install -- --open
 ```
 
-Behavior:
+## Test
 
-- `pnpm build` without subcommands runs the frontend build used by Tauri's `beforeBuildCommand`
-- `install` is macOS only (the bundle target in `src-tauri/tauri.conf.json` is `app`)
-- Installs to `/Applications` by default; override with `MARKDOWNER_INSTALL_PATH` or `--path <DIR>`
-- Uses `sudo` automatically only when the install path is not writable
-- Replaces any existing `Markdowner.app` at the destination, copies with `ditto`, and clears the `com.apple.quarantine` attribute so the locally built bundle launches without a Gatekeeper prompt
-- Pass `open` or `--open` to launch the installed bundle after copying
-- `scripts/build-and-install.sh` remains as a compatibility wrapper around `pnpm build install`
-
-## No-Cost macOS DMG Distribution
-
-Markdowner is configured for Tauri ad-hoc macOS signing through `src-tauri/tauri.conf.json`:
-
-```json
-"signingIdentity": "-"
-```
-
-Build a DMG for direct download distribution:
-
-```bash
-pnpm build:mac:dmg
-```
-
-The command prints the generated `.dmg` path and a SHA-256 checksum. Share both with testers so they can verify the downloaded file.
-
-For one DMG that supports both Apple Silicon and Intel Macs, install both Rust targets once and run the universal build:
-
-```bash
-rustup target add aarch64-apple-darwin x86_64-apple-darwin
-pnpm build:mac:universal:dmg
-```
-
-Important limitation: ad-hoc signing is not Developer ID signing and does not notarize the app. A downloaded DMG can still require the recipient to allow the app manually in macOS Privacy & Security on first launch. A warning-free double-click flow for general users still requires the paid Apple Developer Program, a Developer ID certificate, and notarization.
-
-Tester launch instructions:
-
-```text
-1. Open the DMG and drag Markdowner.app to Applications.
-2. Try opening Markdowner once.
-3. If macOS blocks it, open System Settings -> Privacy & Security.
-4. In the Security section, click Open Anyway for Markdowner.
-5. Confirm Open. Future launches should work normally.
-```
-
-### `scripts/build-and-run.sh`
-
-Builds the Tauri app and launches it immediately.
-
-```bash
-scripts/build-and-run.sh           # release build, then open the .app
-scripts/build-and-run.sh --debug   # debug build
-scripts/build-and-run.sh --no-run  # build only, do not launch
-```
-
-Behavior:
-
-- Verifies `pnpm` and `cargo` are on `PATH`
-- Runs `pnpm install` if `node_modules` is missing
-- Runs `pnpm tauri build` (or `pnpm tauri build --debug`)
-- On macOS opens `target/{release,debug}/bundle/macos/Markdowner.app`; on other platforms runs `target/{release,debug}/markdowner-desktop`
-
-## Verify the Current App
-
-Run the frontend and Rust test suites:
+Run the main verification suite:
 
 ```bash
 pnpm test
@@ -259,18 +161,72 @@ cargo test
 Useful focused checks:
 
 ```bash
+pnpm exec vitest run
+bash scripts/build-and-install.test.sh
 cargo test -p markdowner-core
-pnpm build
-pnpm tauri build --debug
+pnpm exec tsc --noEmit
 ```
 
-## Notes and Current Limitations
+## Release
 
-- The Tauri desktop shell is working locally on macOS and no-cost ad-hoc DMG generation is available; paid Developer ID signing/notarization remains follow-up for warning-free public distribution.
-- The frontend production bundle is currently large enough to trigger Vite's chunk size warning.
-- Windows support is a planned next step rather than a completed local workflow.
-- `crates/markdowner-macos` still exists as a reference implementation and regression target while the Tauri shell becomes the main app entrypoint.
+Markdowner uses the repo-root `VERSION` file and date-based versions in the form:
+
+```text
+MAJOR.YYMMDD.PATCH
+```
+
+Refresh the date/patch version locally:
+
+```bash
+pnpm bump refresh
+```
+
+Push a release bump from `main`:
+
+```bash
+pnpm bump refresh --push
+```
+
+That command syncs `VERSION` into `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `Cargo.lock`, commits those version files, and pushes to `main`.
+
+The GitHub Actions release workflow then:
+
+1. reads `VERSION`
+2. installs the Node and Rust toolchains
+3. syncs version metadata
+4. builds a universal macOS DMG
+5. creates the GitHub Release with `gh release create --generate-notes`
+6. uploads the generated DMG asset
+
+GitHub generates the release notes by comparing the new release with the previous tag.
+
+## Repository Layout
+
+```text
+crates/markdowner-core/      Rust document model, Markdown round-trip logic, settings, workspace runtime
+crates/markdowner-macos/     Earlier macOS reference crate and regression boundary
+src/                         React/Vite desktop frontend
+src-tauri/                   Tauri shell, Rust command bridge, updater, macOS integration
+scripts/                     Build, install, version sync, and release helper scripts
+docs/                        Architecture and Markdown coverage notes
+```
+
+## Current Status
+
+Markdowner is usable today as a macOS desktop Markdown editor, with the core writing, navigation, settings, local build, and release paths in place.
+
+Still planned:
+
+- Developer ID signing and notarization
+- Windows build, test, and release validation
+- HTML/PDF/print export
+- richer image asset workflows
+- automated desktop E2E, screenshot regression, and accessibility gates
+
+## Contributing
+
+Issues and pull requests are welcome. For code changes, keep the scope tight, run the focused tests that cover your change, and include the relevant verification commands in the PR description.
 
 ## License
 
-MIT. See `LICENSE` for details.
+MIT. See [LICENSE](./LICENSE).
