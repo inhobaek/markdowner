@@ -98,7 +98,23 @@ export const PreventTableHoverSelection = Extension.create({
               if (!(selection instanceof CellSelection)) return;
               // Preserve genuine multi-cell selections.
               if (selection.$anchorCell.pos !== selection.$headCell.pos) return;
-              const inside = Math.min(selection.$headCell.pos + 1, doc.content.size);
+              const cellStart = selection.$headCell.pos;
+              const cellEnd = cellStart + (selection.$headCell.nodeAfter?.nodeSize ?? 2);
+              // Collapse to the CLICKED character, not the cell start —
+              // landing at the start of a filled cell reads as a caret jump.
+              // posAtCoords needs real layout (caretRangeFromPoint), which
+              // jsdom lacks, so fall back to the cell start on any failure
+              // and reject hits that resolve outside the clicked cell
+              // (releases over padding/borders can land in a neighbour).
+              let inside = Math.min(cellStart + 1, doc.content.size);
+              try {
+                const hit = editorView.posAtCoords({ left: clientX, top: clientY });
+                if (hit && hit.pos > cellStart && hit.pos < cellEnd) {
+                  inside = hit.pos;
+                }
+              } catch {
+                // Keep the cell-start fallback.
+              }
               editorView.dispatch(
                 tr.setSelection(TextSelection.near(doc.resolve(inside))),
               );

@@ -7,7 +7,10 @@ import {
   save as saveDialog,
 } from '@tauri-apps/plugin-dialog';
 import Image from '@tiptap/extension-image';
-import { Table } from '@tiptap/extension-table';
+import {
+  MarkdownTable,
+  sanitizeMarkdownControlChars,
+} from '@/components/wysiwyg/tableMarkdownExtensions';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TableRow from '@tiptap/extension-table-row';
@@ -505,6 +508,11 @@ export default function App() {
   // landing — i.e. a legitimately repeated character (ㅐㅐㅐ, ㅋㅋㅋ) — and
   // must never be swallowed by the WebKit duplicate-echo guard.
   const activeWysiwygCompositionDataRef = useRef<string | null>(null);
+  // Bumped every time the localDraft→editor sync effect replaces the document
+  // via setContent. Deferred composition-repair timers capture the epoch when
+  // they're scheduled and bail if the doc was replaced in the meantime —
+  // their saved absolute positions are meaningless in the new doc.
+  const wysiwygDocReplaceEpochRef = useRef(0);
   // Mirrors the live Tiptap editor instance so memoized handleDOMEvents
   // callbacks (which capture closures at first render) can always reach the
   // current editor — without this, `editor` inside `compositionend` would be
@@ -1256,8 +1264,12 @@ export default function App() {
   }, [snapshot.activeDocumentPath]);
 
   const publishWysiwygMarkdownDraft = useEffectEvent((markdown: string) => {
-    lastEditorMarkdownRef.current = markdown;
-    setLocalDraft(markdown);
+    // Defense in depth: documents corrupted by the old table serializer carry
+    // literal U+001F cell separators; heal them (→ space) before the draft
+    // can reach the mirror/save paths so the bytes never go back to disk.
+    const sanitized = sanitizeMarkdownControlChars(markdown);
+    lastEditorMarkdownRef.current = sanitized;
+    setLocalDraft(sanitized);
   });
 
   // Serialize the editor's current state into localDraft. Skips silently when
@@ -1413,7 +1425,10 @@ export default function App() {
       }),
       createCodeBlockExtension(),
       Image,
-      Table.configure({ resizable: true }),
+      // MarkdownTable = stock Table + non-corrupting markdown round-trip
+      // ('|' escaped in cells, multi-block cells joined with <br> instead of
+      // a literal U+001F byte, no phantom header row on headerless tables).
+      MarkdownTable.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,
@@ -1637,6 +1652,33 @@ export default function App() {
           ) {
             pendingEnterAfterCompositionRef.current = true;
           }
+          // A deliberate caret move ends the CJK syllable burst: the
+          // carry-forward repair must not yank the caret back to where the
+          // previous syllable ended after the user navigated away on purpose.
+          // (The 600ms wall clock alone can't tell fast navigation from the
+          // reversal cascade.) Composition-time arrows are left alone — they
+          // belong to the IME.
+          if (
+            !composingNow &&
+            (ke.key === 'ArrowLeft' ||
+              ke.key === 'ArrowRight' ||
+              ke.key === 'ArrowUp' ||
+              ke.key === 'ArrowDown' ||
+              ke.key === 'Home' ||
+              ke.key === 'End' ||
+              ke.key === 'PageUp' ||
+              ke.key === 'PageDown')
+          ) {
+            tableCompositionExpectedEndRef.current = null;
+            lastWysiwygCompositionEndAtRef.current = 0;
+          }
+          return false;
+        },
+        mousedown: () => {
+          // Clicking is the clearest "burst over" signal — same rationale as
+          // the navigation keys above.
+          tableCompositionExpectedEndRef.current = null;
+          lastWysiwygCompositionEndAtRef.current = 0;
           return false;
         },
         compositionstart: (view: any) => {
@@ -1715,12 +1757,16 @@ export default function App() {
           // which compositionstart sets synchronously).
           if (pendingEnterAfterCompositionRef.current) {
             pendingEnterAfterCompositionRef.current = false;
+            const replayEpoch = wysiwygDocReplaceEpochRef.current;
             window.setTimeout(() => {
               const ed = editorInstanceRef.current;
               if (!ed || currentModeRef.current !== 'Wysiwyg') return;
               // A genuinely new composition starting cancels the replay
               // (the user kept typing rather than wanting a newline).
               if (isWysiwygComposingRef.current) return;
+              // The doc was replaced (tab switch, external reload) since the
+              // Enter was swallowed — the intent no longer applies.
+              if (wysiwygDocReplaceEpochRef.current !== replayEpoch) return;
               ed.chain()
                 .focus()
                 .command(({ commands }) =>
@@ -1765,10 +1811,15 @@ export default function App() {
             // compositionstart, which is where the reversal is actually
             // repaired (view.composing lingers here, blocking the timer below).
             tableCompositionExpectedEndRef.current = anchor + committed.length;
+            const correctionEpoch = wysiwygDocReplaceEpochRef.current;
             window.setTimeout(() => {
               const ed = editorInstanceRef.current;
               if (!ed || currentModeRef.current !== 'Wysiwyg') return;
               if (isWysiwygComposingRef.current || ed.view?.composing) return;
+              // `anchor` is an absolute position in the doc as it existed at
+              // compositionstart; if setContent replaced the doc since, the
+              // correction would move the caret to a meaningless coordinate.
+              if (wysiwygDocReplaceEpochRef.current !== correctionEpoch) return;
               const current = ed.state.selection.from;
               const target = computeTableCaretCorrection({
                 anchor,
@@ -2578,6 +2629,14 @@ export default function App() {
     // re-trigger this effect indefinitely (React error #185).
     lastEditorMarkdownRef.current = localDraft;
     lastEditorActiveTabIdRef.current = activeTabId;
+    // The setContent below replaces the whole document, so any absolute
+    // positions the WebKit table-cell caret repair captured beforehand are
+    // meaningless afterwards — drop them and invalidate the deferred repair
+    // timers (they compare this epoch) so the caret can't be yanked to a
+    // stale pre-replacement coordinate.
+    wysiwygDocReplaceEpochRef.current += 1;
+    tableCompositionAnchorRef.current = null;
+    tableCompositionExpectedEndRef.current = null;
     const nextContent = localDraft || '';
     const setContentOptions = {
       contentType: 'markdown',
