@@ -2367,6 +2367,12 @@ export default function App() {
     // Initial mount is handled by the startup-restore effect; skip restoring
     // again here so we don't dispatch a competing selection on first paint.
     if (isInitialObservation) return;
+    // The Settings tab hides the editor column with `display:none`; a
+    // scrollIntoView dispatch against zero-sized rects poisons CodeMirror's
+    // cached geometry (WKWebView never re-measures on unhide). The key above
+    // is already recorded, and returning from Settings changes activeTabId
+    // again, so the restore still runs once the editor is visible.
+    if (isSettingsTabActive) return;
 
     const savedLocation = snapshot.activeDocumentPath
       ? cursorByPathRef.current.get(snapshot.activeDocumentPath)
@@ -3362,8 +3368,12 @@ export default function App() {
   // freshly-shown flex layout settle first (same reason the cursor-handoff
   // effect above defers). Editor↔SplitView is covered too — the source pane's
   // width flips there, so its line wrapping needs a re-measure as well.
+  // The Settings tab hides the WHOLE editor column with `display:none` (the
+  // same WKWebView observer gap), so its close must also re-measure — while
+  // it is open, measuring would read zero rects and poison the height map.
   useEffect(() => {
     if (!activeDocumentOpen) return;
+    if (isSettingsTabActive) return;
     if (currentMode !== 'Editor' && currentMode !== 'SplitView') return;
     const view = sourceEditorViewRef.current;
     if (!view) return;
@@ -3371,7 +3381,7 @@ export default function App() {
       view.requestMeasure();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [currentMode, activeDocumentOpen, sourceEditorViewToken]);
+  }, [currentMode, activeDocumentOpen, sourceEditorViewToken, isSettingsTabActive]);
 
   const handleSetMode = useEffectEvent(async (nextMode: EditorMode) => {
     // Always read snapshot/localDraft from the latest state via useEffectEvent
