@@ -495,13 +495,16 @@ export default function App() {
   // after the heading) between syllables — without this, every Hangul
   // syllable after the first splits the heading into heading + paragraph.
   const lastWysiwygCompositionEndAtRef = useRef<number>(0);
-  // Most-recent compositionend payload — kept for diagnostics / future use.
-  // The actual duplicate-syllable detection lives in handleTextInput and
-  // compares against the live editor state rather than this ref, so the
-  // detection survives multi-syllable runs (the bug never depended on the
-  // buffered data anyway — the IME duplicates the in-progress syllable
-  // before compositionend fires).
+  // Most-recent compositionend payload. The duplicate-syllable guard in
+  // handleTextInput uses it for the post-commit tail window: with no
+  // composition in flight only the just-committed syllable can echo, so an
+  // insertion that doesn't match this value is the user's own typing.
   const lastWysiwygCompositionDataRef = useRef<string>('');
+  // Latest compositionupdate data of the IN-FLIGHT composition (null when
+  // none). A pure insertion equal to this value is the composition itself
+  // landing — i.e. a legitimately repeated character (ㅐㅐㅐ, ㅋㅋㅋ) — and
+  // must never be swallowed by the WebKit duplicate-echo guard.
+  const activeWysiwygCompositionDataRef = useRef<string | null>(null);
   // Mirrors the live Tiptap editor instance so memoized handleDOMEvents
   // callbacks (which capture closures at first render) can always reach the
   // current editor — without this, `editor` inside `compositionend` would be
@@ -1567,6 +1570,8 @@ export default function App() {
           text,
           isComposing: isWysiwygComposingRef.current,
           lastCompositionEndAt: lastWysiwygCompositionEndAtRef.current,
+          compositionData: activeWysiwygCompositionDataRef.current,
+          lastCompositionData: lastWysiwygCompositionDataRef.current,
           textBetween: view.state.doc.textBetween.bind(view.state.doc),
         });
         imeLog('handleTextInput', view, {
@@ -1636,6 +1641,7 @@ export default function App() {
         },
         compositionstart: (view: any) => {
           isWysiwygComposingRef.current = true;
+          activeWysiwygCompositionDataRef.current = '';
           imeLog('compositionstart', view);
           // Primary WebKit reversal repair: before this syllable composes, if
           // the caret was reset back to the cell start after the previous
@@ -1676,11 +1682,16 @@ export default function App() {
           return false;
         },
         compositionupdate: (view: any, event: Event) => {
+          // `compositionupdate` fires before the DOM mutation, so by the time
+          // readDOMChange calls handleTextInput this ref already holds the
+          // text the composition is about to insert.
+          activeWysiwygCompositionDataRef.current = (event as CompositionEvent).data ?? '';
           imeLog('compositionupdate', view, { data: (event as CompositionEvent).data });
           return false;
         },
         compositionend: (_view: any, event: Event) => {
           isWysiwygComposingRef.current = false;
+          activeWysiwygCompositionDataRef.current = null;
           lastWysiwygCompositionEndAtRef.current = Date.now();
           lastWysiwygCompositionDataRef.current =
             (event as CompositionEvent).data ?? '';
@@ -1777,6 +1788,7 @@ export default function App() {
         },
         compositioncancel: () => {
           isWysiwygComposingRef.current = false;
+          activeWysiwygCompositionDataRef.current = null;
           pendingEnterAfterCompositionRef.current = false;
           tableCompositionAnchorRef.current = null;
           tableCompositionExpectedEndRef.current = null;

@@ -21,6 +21,16 @@ type DuplicateImeTextInputState = {
   text: string;
   isComposing: boolean;
   lastCompositionEndAt?: number;
+  /**
+   * Latest `compositionupdate` data of the IN-FLIGHT composition; null or
+   * undefined when no composition is active. Distinguishes the WebKit echo
+   * (which re-inserts the PREVIOUS syllable while the current composition
+   * holds different data) from a legitimately repeated character, whose
+   * insertion IS the current composition's data (ㅐㅐㅐ, ㅋㅋㅋ, 나나).
+   */
+  compositionData?: string | null;
+  /** `compositionend` data of the most recently committed composition. */
+  lastCompositionData?: string;
   now?: number;
   textBetween: (from: number, to: number, blockSeparator?: string, leafText?: string) => string;
 };
@@ -83,6 +93,20 @@ export function shouldSuppressSyntheticImeEnter(
  * the legitimate replacement that commits a syllable. When the inserted text
  * exactly matches the text before the cursor during the composition window,
  * swallowing it prevents `# 안녕하세요` from becoming `# 안안녕하세요`.
+ *
+ * The echo must be told apart from the user legitimately typing the same
+ * character twice in a row — ㅐㅐㅐ ("ooo" on a 2-set layout), ㅋㅋㅋ, the
+ * second 나 of 바나나 — which produces the exact same "pure insertion equal to
+ * the preceding text" shape. Two discriminators, both rooted in what the echo
+ * IS (a stray copy of the just-committed syllable):
+ *
+ *   - While a composition is in flight, a legitimate repeat's insertion IS
+ *     that composition's own data (compositionupdate fires before the DOM
+ *     mutation), whereas the echo replays the PREVIOUS syllable while the
+ *     current composition holds different data. Equal data ⇒ keep.
+ *   - With no composition in flight (the post-commit tail window), only the
+ *     just-committed syllable can echo, so the insertion must match the last
+ *     compositionend data to be suppressed.
  */
 export function shouldSuppressDuplicateImeTextInput(
   state: DuplicateImeTextInputState,
@@ -96,6 +120,12 @@ export function shouldSuppressDuplicateImeTextInput(
     now - lastCompositionEndAt < DUPLICATE_TEXT_INPUT_COMPOSITION_WINDOW_MS;
 
   if (!isInCompositionWindow) return false;
+
+  if (state.compositionData != null) {
+    if (state.compositionData === state.text) return false;
+  } else if (state.lastCompositionData !== undefined) {
+    if (state.lastCompositionData !== state.text) return false;
+  }
 
   const start = Math.max(0, state.from - state.text.length);
   return state.textBetween(start, state.from, '\n', '\n') === state.text;

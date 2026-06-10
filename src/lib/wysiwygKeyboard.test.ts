@@ -94,6 +94,70 @@ describe('shouldSuppressDuplicateImeTextInput', () => {
       }),
     ).toBe(true);
   });
+
+  it('keeps a repeated character that IS the in-flight composition (ㅐㅐㅐ / ㅋㅋㅋ)', () => {
+    // Typing the same jamo twice produces the exact echo shape — a pure
+    // insertion equal to the preceding text — but the insertion equals the
+    // current composition's own data, so it is the user's keystroke.
+    expect(
+      shouldSuppressDuplicateImeTextInput({
+        from: 3,
+        to: 3,
+        text: 'ㅐ',
+        isComposing: true,
+        compositionData: 'ㅐ',
+        textBetween: vi.fn(() => 'ㅐ'),
+      }),
+    ).toBe(false);
+  });
+
+  it('still suppresses the echo while a DIFFERENT syllable is composing', () => {
+    // WebKit replays the previous syllable ('안') while the next one ('ㄴ')
+    // is in flight — the data mismatch identifies it as the echo.
+    expect(
+      shouldSuppressDuplicateImeTextInput({
+        from: 3,
+        to: 3,
+        text: '안',
+        isComposing: true,
+        compositionData: 'ㄴ',
+        textBetween: vi.fn(() => '안'),
+      }),
+    ).toBe(true);
+  });
+
+  it('suppresses the post-commit echo only when it matches the committed syllable', () => {
+    expect(
+      shouldSuppressDuplicateImeTextInput({
+        from: 3,
+        to: 3,
+        text: '안',
+        isComposing: false,
+        lastCompositionEndAt: 1_000,
+        now: 1_100,
+        compositionData: null,
+        lastCompositionData: '안',
+        textBetween: vi.fn(() => '안'),
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps tail-window typing that does not match the last committed syllable', () => {
+    // English "oo" typed within 200ms of a Korean commit must not be eaten.
+    expect(
+      shouldSuppressDuplicateImeTextInput({
+        from: 3,
+        to: 3,
+        text: 'o',
+        isComposing: false,
+        lastCompositionEndAt: 1_000,
+        now: 1_100,
+        compositionData: null,
+        lastCompositionData: '안',
+        textBetween: vi.fn(() => 'o'),
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('focusCodeBlockLanguageSelectorOnArrowUp', () => {
