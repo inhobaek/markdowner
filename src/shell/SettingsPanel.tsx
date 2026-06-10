@@ -348,7 +348,7 @@ export function SettingsPanel({
         </div>
         <Separator />
         <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="update-check-toggle" className="flex flex-col gap-0.5">
+          <Label htmlFor="update-check-toggle" className="flex flex-col items-start gap-0.5 text-left">
             <span className="text-sm font-medium leading-none">Check for updates automatically</span>
             <span className="text-xs text-muted-foreground">
               Looks for a newer release at most once per day — at launch and while
@@ -681,7 +681,7 @@ export function SettingsPanel({
           </div>
 
           <div className={inputFieldClass}>
-            <Label htmlFor="wrap-column" className="flex flex-col gap-0.5 text-sm">
+            <Label htmlFor="wrap-column" className="flex flex-col items-start gap-0.5 text-left text-sm">
               <span>Wrap Column</span>
               <span className="text-xs font-normal text-muted-foreground">
                 0 = wrap to window width
@@ -712,7 +712,7 @@ export function SettingsPanel({
           </div>
 
           <div className={switchFieldClass}>
-            <Label htmlFor="show-wrap-line" className="flex flex-col gap-0.5 text-sm">
+            <Label htmlFor="show-wrap-line" className="flex flex-col items-start gap-0.5 text-left text-sm">
               <span>Show Wrap Line</span>
               <span className="text-xs font-normal text-muted-foreground">
                 Vertical guide at the wrap column (column &gt; 0 only).
