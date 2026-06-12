@@ -78,6 +78,15 @@ export async function openDroppedPath(path: string) {
   return invoke<AppSnapshot>('open_dropped_path', { path });
 }
 
+/**
+ * Copy a picked image into the active document's asset folder (the
+ * `assetFolder` setting, default "assets"). Resolves to the doc-relative
+ * path to embed in markdown; rejects when the document is unsaved.
+ */
+export async function importImageAsset(sourcePath: string) {
+  return invoke<string>('import_image_asset', { sourcePath });
+}
+
 export async function quitApp() {
   return invoke<void>('quit_app');
 }

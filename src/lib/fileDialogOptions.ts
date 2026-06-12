@@ -1,5 +1,16 @@
 export const MARKDOWN_FILE_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 
+export const IMAGE_FILE_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+  'avif',
+  'bmp',
+];
+
 type OpenDialogSelection = string | string[] | null | undefined;
 
 type OpenDialogDefaultPathInput = {

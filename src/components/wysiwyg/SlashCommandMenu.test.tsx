@@ -2,6 +2,17 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { publishEditorEvent } from '@/lib/editorEvents';
+
+const openDialogMock = vi.fn();
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: (...args: unknown[]) => openDialogMock(...args),
+}));
+
+const importImageAssetMock = vi.fn();
+vi.mock('@/lib/desktop', () => ({
+  importImageAsset: (...args: unknown[]) => importImageAssetMock(...args),
+}));
+
 import { SlashCommandMenu } from './SlashCommandMenu';
 
 function createSlashEditor(
@@ -100,7 +111,7 @@ describe('SlashCommandMenu', () => {
 
     expect(await screen.findByRole('menu', { name: /insert block/i })).toBeInTheDocument();
 
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 12; index += 1) {
       fireEvent.keyDown(editor.view.dom, { key: 'ArrowDown' });
     }
 
@@ -184,7 +195,7 @@ describe('SlashCommandMenu', () => {
     offsetHeightSpy.mockRestore();
   });
 
-  it('opens an inline image URL input when the Image item is activated', async () => {
+  it('opens an inline image URL input when the Image from URL item is activated', async () => {
     // window.prompt is unreliable inside Tauri's WKWebView — the slash menu
     // must collect the URL itself instead of calling prompt(). The form keeps
     // focus inside the editor surface and inserts the image only on submit.
@@ -208,7 +219,7 @@ describe('SlashCommandMenu', () => {
       editor.emit('update');
     });
 
-    fireEvent.click(await screen.findByRole('menuitem', { name: /image/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /image from url/i }));
 
     const form = await screen.findByTestId('slash-command-image-form');
     const input = form.querySelector('input') as HTMLInputElement;
@@ -242,7 +253,7 @@ describe('SlashCommandMenu', () => {
       editor.emit('update');
     });
 
-    fireEvent.click(await screen.findByRole('menuitem', { name: /image/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /image from url/i }));
 
     const form = await screen.findByTestId('slash-command-image-form');
     fireEvent.click(form.querySelector('button[type="button"]') as HTMLElement);
@@ -300,6 +311,139 @@ describe('SlashCommandMenu', () => {
 
     await waitFor(() => {
       expect(menu.style.top).not.toBe(beforeTop);
+    });
+  });
+
+  it('opens the Turn-into menu over a selection and hides non-convertible items', async () => {
+    const editor = createSlashEditor();
+    editor.state.selection = { from: 2, to: 10, empty: false, $from: { depth: 1, start: () => 1 } };
+    editor.state.doc.nodesBetween = vi.fn();
+
+    render(<SlashCommandMenu editor={editor} />);
+    await act(async () => {});
+
+    act(() => {
+      publishEditorEvent('slash:open-at-cursor', { mode: 'convert' });
+    });
+
+    expect(await screen.findByRole('menu', { name: /turn into/i })).toBeInTheDocument();
+    // h1–h5 are offered as conversion targets.
+    expect(screen.getByRole('menuitem', { name: /heading 4/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /heading 5/i })).toBeInTheDocument();
+    // Insert-only blocks are not conversion targets.
+    expect(screen.queryByRole('menuitem', { name: /^table$/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /divider/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /image/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /link/i })).toBeNull();
+  });
+
+  it('converts without deleting the selection in Turn-into mode', async () => {
+    const chain: any = {
+      focus: vi.fn().mockReturnThis(),
+      deleteRange: vi.fn().mockReturnThis(),
+      setNode: vi.fn().mockReturnThis(),
+      run: vi.fn().mockReturnValue(true),
+    };
+    const editor = createSlashEditor();
+    editor.chain = vi.fn().mockReturnValue(chain);
+    editor.state.selection = { from: 2, to: 10, empty: false, $from: { depth: 1, start: () => 1 } };
+    editor.state.doc.nodesBetween = vi.fn();
+
+    render(<SlashCommandMenu editor={editor} />);
+    await act(async () => {});
+
+    act(() => {
+      publishEditorEvent('slash:open-at-cursor', { mode: 'convert' });
+    });
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /heading 1/i }));
+
+    expect(chain.setNode).toHaveBeenCalledWith('heading', { level: 1 });
+    expect(chain.deleteRange).not.toHaveBeenCalled();
+  });
+
+  it('refuses to open the Turn-into menu when the selection touches a table', async () => {
+    const editor = createSlashEditor();
+    editor.state.selection = { from: 2, to: 10, empty: false, $from: { depth: 1, start: () => 1 } };
+    editor.state.doc.nodesBetween = (
+      _from: number,
+      _to: number,
+      callback: (node: { type: { name: string } }) => boolean | void,
+    ) => {
+      callback({ type: { name: 'table' } });
+    };
+
+    render(<SlashCommandMenu editor={editor} />);
+    await act(async () => {});
+
+    act(() => {
+      publishEditorEvent('slash:open-at-cursor', { mode: 'convert' });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('menu', { name: /turn into/i })).toBeNull();
+    });
+  });
+
+  it('picks an image file and inserts the imported asset path', async () => {
+    openDialogMock.mockResolvedValue('/tmp/photos/cat.png');
+    importImageAssetMock.mockResolvedValue('assets/cat.png');
+    const setImage = vi.fn().mockReturnValue({ run: vi.fn().mockReturnValue(true) });
+    const chain: any = {
+      focus: vi.fn().mockReturnThis(),
+      deleteRange: vi.fn().mockReturnThis(),
+      setImage,
+      run: vi.fn().mockReturnValue(true),
+    };
+    const editor = createSlashEditor();
+    editor.chain = vi.fn().mockReturnValue(chain);
+    editor.commands = { focus: vi.fn() };
+
+    render(<SlashCommandMenu editor={editor} />);
+
+    act(() => {
+      editor.emit('update');
+    });
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /insert an image file/i }));
+
+    await waitFor(() => {
+      expect(openDialogMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          multiple: false,
+          directory: false,
+          filters: [expect.objectContaining({ name: 'Image' })],
+        }),
+      );
+      expect(importImageAssetMock).toHaveBeenCalledWith('/tmp/photos/cat.png');
+      expect(setImage).toHaveBeenCalledWith({ src: 'assets/cat.png' });
+    });
+  });
+
+  it('falls back to the absolute path when the asset import fails (unsaved doc)', async () => {
+    openDialogMock.mockResolvedValue('/tmp/photos/cat.png');
+    importImageAssetMock.mockRejectedValue(new Error('Save the document first'));
+    const setImage = vi.fn().mockReturnValue({ run: vi.fn().mockReturnValue(true) });
+    const chain: any = {
+      focus: vi.fn().mockReturnThis(),
+      deleteRange: vi.fn().mockReturnThis(),
+      setImage,
+      run: vi.fn().mockReturnValue(true),
+    };
+    const editor = createSlashEditor();
+    editor.chain = vi.fn().mockReturnValue(chain);
+    editor.commands = { focus: vi.fn() };
+
+    render(<SlashCommandMenu editor={editor} />);
+
+    act(() => {
+      editor.emit('update');
+    });
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /insert an image file/i }));
+
+    await waitFor(() => {
+      expect(setImage).toHaveBeenCalledWith({ src: '/tmp/photos/cat.png' });
     });
   });
 

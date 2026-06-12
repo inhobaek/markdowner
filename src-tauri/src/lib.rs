@@ -1654,6 +1654,92 @@ fn open_dropped_path(
     })
 }
 
+/// Copy a picked image file into the active document's asset folder and
+/// return the doc-relative path to embed in markdown. Fails when the active
+/// document has no backing file yet — there is no directory to be relative
+/// to; the frontend falls back to embedding the absolute path.
+#[tauri::command]
+fn import_image_asset(
+    source_path: String,
+    state: State<'_, DesktopAppState>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    let document_path = with_backend(state, |backend| {
+        Ok(backend.snapshot().active_document_path)
+    })?
+    .ok_or_else(|| "Save the document before importing images".to_string())?;
+    let asset_folder = load_desktop_settings(&app_handle)?.asset_folder;
+    copy_image_into_asset_folder(
+        Path::new(&document_path),
+        &asset_folder,
+        Path::new(&source_path),
+    )
+}
+
+fn copy_image_into_asset_folder(
+    document_path: &Path,
+    asset_folder: &str,
+    source_path: &Path,
+) -> Result<String, String> {
+    if !source_path.is_file() {
+        return Err(format!("Image file not found: {}", source_path.display()));
+    }
+    let document_dir = document_path
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .ok_or_else(|| "Could not resolve the document directory".to_string())?;
+    let folder = {
+        let trimmed = asset_folder.trim();
+        if trimmed.is_empty() { "assets" } else { trimmed }
+    };
+    let asset_dir = document_dir.join(folder);
+    let file_name = source_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| "Could not resolve the image file name".to_string())?;
+
+    // Already inside the asset folder — just reference it, no copy.
+    if source_path.parent() == Some(asset_dir.as_path()) {
+        return Ok(format!("{folder}/{file_name}"));
+    }
+
+    std::fs::create_dir_all(&asset_dir)
+        .map_err(|e| format!("Could not create '{}': {e}", asset_dir.display()))?;
+    let destination = unique_asset_destination(&asset_dir, &file_name);
+    std::fs::copy(source_path, &destination)
+        .map_err(|e| format!("Could not copy image into '{}': {e}", asset_dir.display()))?;
+    let destination_name = destination
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or(file_name);
+    Ok(format!("{folder}/{destination_name}"))
+}
+
+/// First free path inside `asset_dir` for `file_name`, suffixing the stem
+/// with `-1`, `-2`, … on collisions so an existing asset is never replaced.
+fn unique_asset_destination(asset_dir: &Path, file_name: &str) -> PathBuf {
+    let candidate = asset_dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let stem = Path::new(file_name)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "image".to_string());
+    let extension = Path::new(file_name)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let mut index = 1usize;
+    loop {
+        let next = asset_dir.join(format!("{stem}-{index}{extension}"));
+        if !next.exists() {
+            return next;
+        }
+        index += 1;
+    }
+}
+
 #[tauri::command]
 fn quit_app(app_handle: AppHandle) {
     app_handle.exit(0);
@@ -1779,6 +1865,7 @@ pub fn run() {
             load_open_tabs,
             save_open_tabs,
             open_dropped_path,
+            import_image_asset,
             quit_app,
             hide_app_or_window,
             link_actions::resolve_markdown_link,
@@ -1840,12 +1927,76 @@ mod tests {
         MENU_COMMAND_SAVE_ACTIVE_DOCUMENT_AS, MENU_COMMAND_SET_MODE_SPLITVIEW, MENU_EDIT_TITLE,
         MENU_FILE_TITLE, MENU_VIEW_TITLE, TopLevelMenuSection, VIEW_MENU_COMMANDS,
         cli_binary_install_is_ours, cli_binary_wrapper_script_for_target,
-        cli_launcher_alias_command_for_path, ctrl_g_launcher_managed_block, install_cli_binary_at,
-        install_cli_launcher_alias, install_ctrl_g_launcher_block, login_shell_path_value,
-        menu_command_from_id, open_startup_path, path_value_contains_dir, resolve_cli_path,
+        cli_launcher_alias_command_for_path, copy_image_into_asset_folder,
+        ctrl_g_launcher_managed_block, install_cli_binary_at, install_cli_launcher_alias,
+        install_ctrl_g_launcher_block, login_shell_path_value, menu_command_from_id,
+        open_startup_path, path_value_contains_dir, resolve_cli_path,
         shell_config_path_for_shell, top_level_menu_sections, uninstall_cli_binary_at,
         uninstall_ctrl_g_launcher_block,
     };
+
+    #[test]
+    fn import_image_asset_copies_into_the_asset_folder_and_returns_a_relative_path() {
+        let temp = tempdir().unwrap();
+        let document_path = temp.path().join("notes.md");
+        fs::write(&document_path, "# Notes").unwrap();
+        let picked = temp.path().join("shot.png");
+        fs::write(&picked, b"png-bytes").unwrap();
+
+        let relative = copy_image_into_asset_folder(&document_path, "assets", &picked).unwrap();
+
+        assert_eq!(relative, "assets/shot.png");
+        let copied = temp.path().join("assets/shot.png");
+        assert_eq!(fs::read(copied).unwrap(), b"png-bytes");
+        // Source stays in place — import copies, never moves.
+        assert!(picked.exists());
+    }
+
+    #[test]
+    fn import_image_asset_suffixes_the_name_instead_of_replacing_an_existing_asset() {
+        let temp = tempdir().unwrap();
+        let document_path = temp.path().join("notes.md");
+        fs::write(&document_path, "# Notes").unwrap();
+        fs::create_dir_all(temp.path().join("assets")).unwrap();
+        fs::write(temp.path().join("assets/shot.png"), b"old").unwrap();
+        let picked = temp.path().join("shot.png");
+        fs::write(&picked, b"new").unwrap();
+
+        let relative = copy_image_into_asset_folder(&document_path, "assets", &picked).unwrap();
+
+        assert_eq!(relative, "assets/shot-1.png");
+        assert_eq!(fs::read(temp.path().join("assets/shot.png")).unwrap(), b"old");
+        assert_eq!(fs::read(temp.path().join("assets/shot-1.png")).unwrap(), b"new");
+    }
+
+    #[test]
+    fn import_image_asset_reuses_files_already_inside_the_asset_folder() {
+        let temp = tempdir().unwrap();
+        let document_path = temp.path().join("notes.md");
+        fs::write(&document_path, "# Notes").unwrap();
+        fs::create_dir_all(temp.path().join("assets")).unwrap();
+        let existing = temp.path().join("assets/shot.png");
+        fs::write(&existing, b"png").unwrap();
+
+        let relative = copy_image_into_asset_folder(&document_path, "assets", &existing).unwrap();
+
+        assert_eq!(relative, "assets/shot.png");
+        // No duplicate copy was made.
+        assert_eq!(fs::read_dir(temp.path().join("assets")).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn import_image_asset_falls_back_to_the_default_folder_for_blank_settings() {
+        let temp = tempdir().unwrap();
+        let document_path = temp.path().join("notes.md");
+        fs::write(&document_path, "# Notes").unwrap();
+        let picked = temp.path().join("shot.png");
+        fs::write(&picked, b"png").unwrap();
+
+        let relative = copy_image_into_asset_folder(&document_path, "  ", &picked).unwrap();
+
+        assert_eq!(relative, "assets/shot.png");
+    }
 
     #[test]
     fn backend_snapshot_reflects_active_document_mode_and_theme() {

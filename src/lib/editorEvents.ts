@@ -14,9 +14,14 @@ interface LinkEditRequest {
   focusInput?: boolean;
 }
 
-// Empty payload reserved for future options. Kept as an object so adding a
-// field later doesn't change the public event shape.
-type SlashOpenAtCursorRequest = Record<string, never>;
+interface SlashOpenAtCursorRequest {
+  /**
+   * 'insert' opens the classic block-insert list at the caret. 'convert'
+   * opens the Turn-into list that reformats the current line — or every
+   * block in the selection — and hides non-convertible items.
+   */
+  mode?: 'insert' | 'convert';
+}
 
 type PayloadFor<E extends EditorOverlayEvent> = E extends 'link:edit-request'
   ? LinkEditRequest

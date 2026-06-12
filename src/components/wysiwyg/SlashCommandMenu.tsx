@@ -9,6 +9,8 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
+  Heading5,
   Image as ImageIcon,
   Link as LinkIcon,
   List,
@@ -20,11 +22,15 @@ import {
   Type,
 } from 'lucide-react';
 
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
+
 import { cn } from '@/lib/utils';
+import { importImageAsset } from '@/lib/desktop';
 import { publishEditorEvent, subscribeEditorEvent } from '@/lib/editorEvents';
+import { IMAGE_FILE_EXTENSIONS } from '@/lib/fileDialogOptions';
 import { hangulToQwerty } from '@/lib/hangulQwerty';
 
-type SlashItemKind = 'block' | 'prompt-image';
+type SlashItemKind = 'block' | 'prompt-image' | 'pick-image';
 
 type SlashItem = {
   id: string;
@@ -33,6 +39,12 @@ type SlashItem = {
   keywords: string[];
   icon: typeof Type;
   kind?: SlashItemKind;
+  /**
+   * Whether the item reformats existing content (heading, list, quote, …) as
+   * opposed to inserting something new (table, image, divider, link). Only
+   * convertible items appear in the Cmd+/ Turn-into menu.
+   */
+  convertible?: boolean;
   run?: (editor: Editor) => void;
 };
 
@@ -43,6 +55,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Plain paragraph text.',
     keywords: ['text', 'paragraph', 'plain', 'p', '텍스트', '본문', '문단'],
     icon: Pilcrow,
+    convertible: true,
     run: (editor) => editor.chain().focus().setParagraph().run(),
   },
   {
@@ -51,6 +64,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Large section heading.',
     keywords: ['h1', 'heading', 'title', '제목1', '제목', '큰제목', '헤딩'],
     icon: Heading1,
+    convertible: true,
     run: (editor) => editor.chain().focus().setNode('heading', { level: 1 }).run(),
   },
   {
@@ -59,6 +73,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Medium section heading.',
     keywords: ['h2', 'heading', '제목2', '제목', '헤딩'],
     icon: Heading2,
+    convertible: true,
     run: (editor) => editor.chain().focus().setNode('heading', { level: 2 }).run(),
   },
   {
@@ -67,7 +82,26 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Small section heading.',
     keywords: ['h3', 'heading', '제목3', '제목', '헤딩'],
     icon: Heading3,
+    convertible: true,
     run: (editor) => editor.chain().focus().setNode('heading', { level: 3 }).run(),
+  },
+  {
+    id: 'h4',
+    title: 'Heading 4',
+    description: 'Sub-section heading.',
+    keywords: ['h4', 'heading', '제목4', '제목', '헤딩'],
+    icon: Heading4,
+    convertible: true,
+    run: (editor) => editor.chain().focus().setNode('heading', { level: 4 }).run(),
+  },
+  {
+    id: 'h5',
+    title: 'Heading 5',
+    description: 'Smallest section heading.',
+    keywords: ['h5', 'heading', '제목5', '제목', '헤딩'],
+    icon: Heading5,
+    convertible: true,
+    run: (editor) => editor.chain().focus().setNode('heading', { level: 5 }).run(),
   },
   {
     id: 'bulleted',
@@ -75,6 +109,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Simple bulleted list.',
     keywords: ['bullet', 'unordered', 'list', 'ul', '목록', '글머리기호', '리스트', '불릿'],
     icon: List,
+    convertible: true,
     run: (editor) => editor.chain().focus().toggleBulletList().run(),
   },
   {
@@ -83,6 +118,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'List with numbering.',
     keywords: ['numbered', 'ordered', 'list', 'ol', '번호목록', '순서목록', '숫자목록', '번호매기기'],
     icon: ListOrdered,
+    convertible: true,
     run: (editor) => editor.chain().focus().toggleOrderedList().run(),
   },
   {
@@ -91,6 +127,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Track tasks with checkboxes.',
     keywords: ['todo', 'task', 'checkbox', 'check', '할일', '체크리스트', '체크박스', '투두'],
     icon: CheckSquare,
+    convertible: true,
     run: (editor) => editor.chain().focus().toggleTaskList().run(),
   },
   {
@@ -99,6 +136,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Block quote.',
     keywords: ['quote', 'blockquote', '인용', '인용구'],
     icon: Quote,
+    convertible: true,
     run: (editor) => editor.chain().focus().toggleBlockquote().run(),
   },
   {
@@ -107,6 +145,7 @@ const SLASH_ITEMS: SlashItem[] = [
     description: 'Fenced code block.',
     keywords: ['code', 'codeblock', 'pre', 'fenced', '코드', '코드블록'],
     icon: Code,
+    convertible: true,
     run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
   },
   {
@@ -137,8 +176,20 @@ const SLASH_ITEMS: SlashItem[] = [
   {
     id: 'image',
     title: 'Image',
+    description: 'Insert an image file from disk.',
+    keywords: ['image', 'img', 'picture', 'photo', 'file', 'upload', '이미지', '그림', '사진', '파일', '업로드'],
+    icon: ImageIcon,
+    // Opens the native file picker; the chosen file is copied into the
+    // document's asset folder by the Rust shell so the markdown embeds a
+    // doc-relative path that keeps rendering after the file moves with the
+    // document. Unsaved docs fall back to the absolute path.
+    kind: 'pick-image',
+  },
+  {
+    id: 'image-url',
+    title: 'Image from URL',
     description: 'Embed an image by URL.',
-    keywords: ['image', 'img', 'picture', 'photo', '이미지', '그림', '사진'],
+    keywords: ['image', 'img', 'url', 'picture', 'photo', '이미지', '그림', '사진', '주소'],
     icon: ImageIcon,
     // The runner sub-mode lives inside the menu — window.prompt is unreliable
     // in WKWebView (Tauri) and feels jarring inside a desktop app. The image
@@ -178,11 +229,20 @@ const SLASH_ITEMS: SlashItem[] = [
 
 type MenuStage = 'list' | 'image-url';
 
+type MenuMode = 'insert' | 'convert';
+
 type MenuState =
   | { open: false }
   | {
       open: true;
       stage: MenuStage;
+      /**
+       * 'insert' is the typed-slash flow: `from`/`to` cover the `/query`
+       * text, which gets deleted before the chosen block is inserted.
+       * 'convert' is the Cmd+/ Turn-into flow: the chosen command reformats
+       * the current selection (or the caret's line) and nothing is deleted.
+       */
+      mode: MenuMode;
       query: string;
       /** Document position of the slash character. */
       from: number;
@@ -193,6 +253,26 @@ type MenuState =
       cursorBottom: number;
       left: number;
     };
+
+/**
+ * Node types Cmd+/ refuses to reformat. Tables would have their cell
+ * paragraphs mangled by setNode, and image/divider blocks have no text to
+ * convert — the menu simply doesn't open when the selection touches one.
+ */
+const NON_CONVERTIBLE_NODE_TYPES = new Set(['table', 'image', 'horizontalRule']);
+
+/** True when every block the selection touches may be reformatted. */
+function selectionSupportsConvert(editor: Editor): boolean {
+  const { from, to } = editor.state.selection;
+  let convertible = true;
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (NON_CONVERTIBLE_NODE_TYPES.has(node.type.name)) {
+      convertible = false;
+    }
+    return convertible;
+  });
+  return convertible;
+}
 
 type Placement = 'below' | 'above';
 
@@ -223,16 +303,22 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredItems = useMemo(() => {
-    if (!menu.open) return SLASH_ITEMS;
+    // The Turn-into menu only offers reformat targets — inserting a table or
+    // divider over the user's selection makes no sense there.
+    const items =
+      menu.open && menu.mode === 'convert'
+        ? SLASH_ITEMS.filter((item) => item.convertible)
+        : SLASH_ITEMS;
+    if (!menu.open) return items;
     const trimmed = menu.query.trim();
     const query = trimmed.toLowerCase();
-    if (!query) return SLASH_ITEMS;
+    if (!query) return items;
     // Also try the query as if the user had meant to type an English command
     // but left the IME in Korean mode: "/ㅅ뮤ㅣㄷ" → "table" (두벌식 layout).
     // Korean keywords (e.g. "표"/"테이블") are matched directly via `query`.
     const layoutSwapped = hangulToQwerty(trimmed).toLowerCase();
     const queries = layoutSwapped && layoutSwapped !== query ? [query, layoutSwapped] : [query];
-    return SLASH_ITEMS.filter((item) =>
+    return items.filter((item) =>
       queries.some(
         (q) =>
           item.title.toLowerCase().includes(q) ||
@@ -311,11 +397,19 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       return;
     }
 
+    // A convert-mode menu is anchored to the user's selection, not to typed
+    // slash text — selection-shaped refreshes must leave it alone (clicks
+    // elsewhere close it via the outside-pointer handler instead).
+    const keepSpecialMenu = (prev: MenuState): MenuState =>
+      prev.open && (prev.stage === 'image-url' || prev.mode === 'convert')
+        ? prev
+        : { open: false };
+
     const update = () => {
       const { state } = editor;
       const { from, to, empty } = state.selection;
       if (!empty || from !== to) {
-        setMenu((prev) => (prev.open && prev.stage === 'image-url' ? prev : { open: false }));
+        setMenu(keepSpecialMenu);
         return;
       }
 
@@ -327,7 +421,7 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       // slashes after ordinary text and must remain plain document content.
       const match = textBefore.match(/^(\s*)\/([^\s/]*)$/);
       if (!match) {
-        setMenu((prev) => (prev.open && prev.stage === 'image-url' ? prev : { open: false }));
+        setMenu(keepSpecialMenu);
         return;
       }
 
@@ -336,7 +430,7 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       const matchStart = blockStart + leadingWhitespace;
       // Sanity: matchStart must point at the slash character.
       if (matchStart < blockStart || textBefore[leadingWhitespace] !== '/') {
-        setMenu((prev) => (prev.open && prev.stage === 'image-url' ? prev : { open: false }));
+        setMenu(keepSpecialMenu);
         return;
       }
 
@@ -344,7 +438,7 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       try {
         coords = editor.view.coordsAtPos(matchStart);
       } catch {
-        setMenu((prev) => (prev.open && prev.stage === 'image-url' ? prev : { open: false }));
+        setMenu(keepSpecialMenu);
         return;
       }
 
@@ -360,9 +454,15 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
             left: coords.left,
           };
         }
+        // An open Turn-into menu must not morph into the insert list just
+        // because the caret happens to sit after literal "/text".
+        if (prev.open && prev.mode === 'convert') {
+          return prev;
+        }
         return {
           open: true,
           stage: 'list',
+          mode: 'insert',
           query,
           from: matchStart,
           to: from,
@@ -371,6 +471,13 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
           left: coords.left,
         };
       });
+    };
+
+    // A document change while the Turn-into menu is open means the user typed
+    // over the selection — the conversion target is gone, so dismiss first.
+    const onDocUpdate = () => {
+      setMenu((prev) => (prev.open && prev.mode === 'convert' ? { open: false } : prev));
+      update();
     };
 
     // Lightweight reposition — only updates coords when the menu is already
@@ -395,7 +502,7 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
     };
 
     editor.on('selectionUpdate', update);
-    editor.on('update', update);
+    editor.on('update', onDocUpdate);
     const handleBlur = () => setMenu({ open: false });
     editor.on('blur', handleBlur);
     window.addEventListener('resize', reposition);
@@ -404,15 +511,18 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
     // — only the capture phase sees it).
     window.addEventListener('scroll', reposition, true);
 
-    // External "open the slash menu at the current caret" trigger (Mod+/, the
-    // command palette, etc.). Behaves as if the user had typed a slash at the
-    // block start — but without a slash character to delete on selection.
-    // Setting from === to === current caret means `runItem`'s `deleteRange`
-    // becomes a no-op, so the block insertion happens cleanly at the caret.
-    const unsubscribeOpenAtCursor = subscribeEditorEvent('slash:open-at-cursor', () => {
+    // External "open the slash menu" trigger (Mod+/, the command palette,
+    // etc.). 'insert' behaves as if the user had typed a slash at the caret —
+    // from === to means `runItem`'s `deleteRange` is a no-op. 'convert' opens
+    // the Turn-into list over the current selection (or the caret's line);
+    // it refuses to open when the selection touches a table/image/divider,
+    // which cannot be reformatted.
+    const unsubscribeOpenAtCursor = subscribeEditorEvent('slash:open-at-cursor', (payload) => {
+      const mode: MenuMode = payload.mode ?? 'insert';
       const { state } = editor;
-      const { from, empty } = state.selection;
-      if (!empty) return;
+      const { from, to, empty } = state.selection;
+      if (mode === 'insert' && !empty) return;
+      if (mode === 'convert' && !selectionSupportsConvert(editor)) return;
       let coords: { top: number; bottom: number; left: number; right: number };
       try {
         coords = editor.view.coordsAtPos(from);
@@ -422,9 +532,10 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
       setMenu({
         open: true,
         stage: 'list',
+        mode,
         query: '',
         from,
-        to: from,
+        to: mode === 'convert' ? to : from,
         cursorTop: coords.top,
         cursorBottom: coords.bottom,
         left: coords.left,
@@ -539,19 +650,60 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
     editor?.commands.focus();
   };
 
+  // Native file picker → Rust copies the file into the document's asset
+  // folder → insert the returned doc-relative src. The menu closes before
+  // the (modal) dialog opens; the captured from/to still point at the typed
+  // "/image" text because the dialog blocks any further edits.
+  const pickImageFile = async (range: { from: number; to: number }) => {
+    if (!editor) return;
+    let selected: unknown;
+    try {
+      selected = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: 'Image', extensions: IMAGE_FILE_EXTENSIONS }],
+      });
+    } catch {
+      selected = null;
+    }
+    if (typeof selected !== 'string') {
+      editor.chain().focus().deleteRange(range).run();
+      return;
+    }
+    let src = selected;
+    try {
+      src = await importImageAsset(selected);
+    } catch {
+      // Unsaved document — no directory to be relative to. The absolute
+      // path still renders through the Tauri asset protocol.
+    }
+    editor.chain().focus().deleteRange(range).setImage({ src }).run();
+  };
+
   const runItem = (item: SlashItem | undefined) => {
     if (!item || !editor || !menu.open) return;
+    if (item.kind === 'pick-image') {
+      const { from, to } = menu;
+      setMenu({ open: false });
+      void pickImageFile({ from, to });
+      return;
+    }
     if (item.kind === 'prompt-image') {
       beginImagePrompt();
       return;
     }
-    const { from, to } = menu;
+    const { from, to, mode } = menu;
     setMenu({ open: false });
-    editor
-      .chain()
-      .focus()
-      .deleteRange({ from, to })
-      .run();
+    if (mode !== 'convert') {
+      // Insert mode: drop the typed "/query" text before running the command.
+      // Convert mode must NOT delete anything — from/to span the user's own
+      // selection, which the command reformats in place.
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from, to })
+        .run();
+    }
     item.run?.(editor);
   };
 
@@ -583,7 +735,7 @@ export function SlashCommandMenu({ editor, enabled = true }: Props) {
     <div
       ref={menuRef}
       role="menu"
-      aria-label="Insert block"
+      aria-label={menu.mode === 'convert' ? 'Turn into' : 'Insert block'}
       data-testid="slash-command-menu"
       data-placement={placement}
       data-stage={menu.stage}
