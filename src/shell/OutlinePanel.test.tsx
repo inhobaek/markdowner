@@ -73,6 +73,21 @@ describe('OutlinePanel', () => {
     expect(props.onSelectItem).toHaveBeenCalledWith(outlineItems[1]);
   });
 
+  it('navigates on a single click without stealing focus from the editor', () => {
+    const props = renderOutlinePanel();
+    const intro = screen.getByRole('button', { name: 'Intro' });
+
+    // mousedown must be default-prevented so the row never takes focus —
+    // otherwise the caret jump races the editor refocus and the user has to
+    // click a second time.
+    const mouseDown = fireEvent.mouseDown(intro);
+    expect(mouseDown).toBe(false);
+
+    fireEvent.click(intro);
+    expect(props.onSelectItem).toHaveBeenCalledTimes(1);
+    expect(props.onSelectItem).toHaveBeenCalledWith(outlineItems[0]);
+  });
+
   it('disables rows while busy', () => {
     renderOutlinePanel({ busy: true });
 

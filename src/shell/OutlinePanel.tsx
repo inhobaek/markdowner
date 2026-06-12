@@ -52,6 +52,12 @@ export function OutlinePanel({
                     paddingLeft: `${8 + Math.max(0, item.depth - 1) * 12}px`,
                   }}
                   disabled={busy}
+                  // Keep the editor focused through the click: if the row
+                  // steals focus on mousedown, the select handler's caret
+                  // move + refocus races WebKit's focus restore and the jump
+                  // appears to need a second click. Keyboard users still
+                  // reach rows via ArrowUp/Down + Enter (handleOutlineKeyDown).
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onSelectItem?.(item)}
                 >
                   <span className="truncate font-medium">{item.title}</span>
