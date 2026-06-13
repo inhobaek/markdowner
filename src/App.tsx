@@ -85,7 +85,10 @@ import {
   openDocument,
   openWorkspace,
   openWorkspaceDocument,
+  openExternalUrl,
+  openPathInDefaultApp,
   replaceActiveDocumentSource,
+  resolveMarkdownLink,
   saveActiveDocument,
   saveActiveDocumentAs,
   setMode,
@@ -230,7 +233,6 @@ import {
 } from './lib/shellModel';
 import {
   findClickedAnchorHref,
-  isOpenLinkClick,
   openMarkdownLink,
 } from './lib/linkOpener';
 import {
@@ -1643,17 +1645,16 @@ export default function App() {
       attributes: {
         class: `editor-surface tiptap-surface ${MARKDOWN_CONTENT_SCOPE_CLASS}`,
       },
-      // Cmd/Ctrl+Click on a link inside the WYSIWYG surface should open the
-      // target: markdown files become a new editor tab, everything else goes
-      // through the OS default handler (browser, mail, Preview, ...).
-      // Plain clicks fall through so the user can still position the caret
-      // inside the link text to edit it.
+      // Clicks on links inside the WYSIWYG surface follow the target. Cmd/Ctrl
+      // keeps the current document tab in place and opens markdown targets in
+      // another tab, matching the browser convention for modifier-click.
       handleClick: (_view: any, _pos: number, event: MouseEvent) => {
-        if (!isOpenLinkClick(event)) return false;
         const href = findClickedAnchorHref(event.target);
         if (!href) return false;
         event.preventDefault();
-        void openMarkdownLink(href, activeDocumentPathRef.current).catch(() => {
+        void openWysiwygLink(href, {
+          openInNewTab: event.metaKey || event.ctrlKey,
+        }).catch(() => {
           // Ignored — non-fatal; user can fall back to the popup's open button.
         });
         return true;
@@ -3270,6 +3271,53 @@ export default function App() {
       // view changes should not get stuck behind a best-effort backend sync.
     }
   };
+
+  const openWysiwygLink = useEffectEvent(
+    async (
+      href: string,
+      options: {
+        openInNewTab: boolean;
+      },
+    ) => {
+      const resolved = await resolveMarkdownLink(href, activeDocumentPathRef.current);
+
+      switch (resolved.kind) {
+        case 'markdown': {
+          const token = nextEditorOpRequest();
+          let applied = false;
+          await withBusy(async () => {
+            stashActiveTabDraft();
+            await syncActiveDraftBestEffort(undefined, editorOpAbortOptions(token));
+            if (isEditorOpStale(token)) return;
+
+            const next = await openDocument(resolved.absolutePath);
+            if (isEditorOpStale(token)) return;
+
+            applySnapshot(next);
+            upsertActiveTabFromSnapshot(next, {
+              reuseTabId:
+                options.openInNewTab || hasActiveTabEdits ? null : activeTabIdRef.current,
+            });
+            applied = true;
+          }, 'Could not open linked document');
+
+          if (applied && !isEditorOpStale(token)) {
+            focusActiveEditor();
+          }
+          return;
+        }
+        case 'file':
+          await openPathInDefaultApp(resolved.absolutePath);
+          return;
+        case 'external':
+          await openExternalUrl(resolved.href);
+          return;
+        case 'anchor':
+        case 'unresolved':
+          return;
+      }
+    },
+  );
 
   const handleNewDocument = async () => {
     // Every invocation appends a fresh Untitled tab (Zed-style): untitled

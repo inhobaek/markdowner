@@ -34,6 +34,9 @@ const saveOpenTabsMock = vi.fn();
 const loadDraftBackupsMock = vi.fn();
 const saveDraftBackupsMock = vi.fn();
 const searchWorkspaceMock = vi.fn();
+const resolveMarkdownLinkMock = vi.fn();
+const openExternalUrlMock = vi.fn();
+const openPathInDefaultAppMock = vi.fn();
 const openDialogMock = vi.fn();
 const saveDialogMock = vi.fn();
 const messageMock = vi.fn();
@@ -80,6 +83,9 @@ vi.mock('./lib/desktop', () => ({
   loadDraftBackups: loadDraftBackupsMock,
   saveDraftBackups: saveDraftBackupsMock,
   searchWorkspace: searchWorkspaceMock,
+  resolveMarkdownLink: resolveMarkdownLinkMock,
+  openExternalUrl: openExternalUrlMock,
+  openPathInDefaultApp: openPathInDefaultAppMock,
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -257,6 +263,22 @@ function captureRuntimeErrors() {
       consoleErrorSpy.mockRestore();
     },
   };
+}
+
+function createAnchorClickEvent(
+  target: Element,
+  init: MouseEventInit = {},
+): MouseEvent {
+  const event = new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  Object.defineProperty(event, 'target', {
+    configurable: true,
+    value: target,
+  });
+  return event;
 }
 
 interface MockTiptapTextSegment {
@@ -445,6 +467,15 @@ describe('App recent documents', () => {
     saveDraftBackupsMock.mockResolvedValue(undefined);
     searchWorkspaceMock.mockReset();
     searchWorkspaceMock.mockResolvedValue({ files: [] });
+    resolveMarkdownLinkMock.mockReset();
+    resolveMarkdownLinkMock.mockResolvedValue({
+      kind: 'unresolved',
+      reason: 'test default',
+    });
+    openExternalUrlMock.mockReset();
+    openExternalUrlMock.mockResolvedValue(undefined);
+    openPathInDefaultAppMock.mockReset();
+    openPathInDefaultAppMock.mockResolvedValue(undefined);
     openDialogMock.mockReset();
     saveDialogMock.mockReset();
     messageMock.mockReset();
@@ -4351,6 +4382,147 @@ describe('App recent documents', () => {
 
     expect(typeof tiptapMockState.lastOptions.editorProps.handlePaste).toBe(
       'function',
+    );
+  });
+
+  it('opens a clicked WYSIWYG markdown link in the current tab', async () => {
+    const editor = createMockTiptapEditor('[Next](./next.md)', [{ text: 'Next', from: 1 }]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'current.md',
+        activeDocumentPath: '/tmp/project/current.md',
+        activeDocumentSource: '[Next](./next.md)',
+        mode: 'Wysiwyg',
+      }),
+    );
+    resolveMarkdownLinkMock.mockResolvedValue({
+      kind: 'markdown',
+      absolutePath: '/tmp/project/next.md',
+    });
+    openDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'next.md',
+        activeDocumentPath: '/tmp/project/next.md',
+        activeDocumentSource: '# Next',
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByRole('tab', { name: /current\.md/i });
+    const anchor = document.createElement('a');
+    anchor.href = './next.md';
+    const label = document.createElement('span');
+    anchor.appendChild(label);
+    const event = createAnchorClickEvent(label);
+
+    const handled = tiptapMockState.lastOptions.editorProps.handleClick(editor.view, 1, event);
+
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(resolveMarkdownLinkMock).toHaveBeenCalledWith(
+        './next.md',
+        '/tmp/project/current.md',
+      );
+      expect(openDocumentMock).toHaveBeenCalledWith('/tmp/project/next.md');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /next\.md/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+    expect(screen.queryByRole('tab', { name: /current\.md/i })).not.toBeInTheDocument();
+  });
+
+  it('opens a Cmd-clicked WYSIWYG markdown link in a new tab', async () => {
+    const editor = createMockTiptapEditor('[Next](./next.md)', [{ text: 'Next', from: 1 }]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'current.md',
+        activeDocumentPath: '/tmp/project/current.md',
+        activeDocumentSource: '[Next](./next.md)',
+        mode: 'Wysiwyg',
+      }),
+    );
+    resolveMarkdownLinkMock.mockResolvedValue({
+      kind: 'markdown',
+      absolutePath: '/tmp/project/next.md',
+    });
+    openDocumentMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'next.md',
+        activeDocumentPath: '/tmp/project/next.md',
+        activeDocumentSource: '# Next',
+        mode: 'Wysiwyg',
+      }),
+    );
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByRole('tab', { name: /current\.md/i });
+    const anchor = document.createElement('a');
+    anchor.href = './next.md';
+    const event = createAnchorClickEvent(anchor, { metaKey: true });
+
+    const handled = tiptapMockState.lastOptions.editorProps.handleClick(editor.view, 1, event);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(openDocumentMock).toHaveBeenCalledWith('/tmp/project/next.md');
+      expect(screen.getByRole('tab', { name: /current\.md/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /next\.md/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+  });
+
+  it('opens a WYSIWYG HTTP link in the default browser instead of a document tab', async () => {
+    const editor = createMockTiptapEditor('[Web](https://example.com)', [
+      { text: 'Web', from: 1 },
+    ]);
+    tiptapMockState.editor = editor;
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'current.md',
+        activeDocumentPath: '/tmp/project/current.md',
+        activeDocumentSource: '[Web](https://example.com)',
+        mode: 'Wysiwyg',
+      }),
+    );
+    resolveMarkdownLinkMock.mockResolvedValue({
+      kind: 'external',
+      href: 'https://example.com',
+    });
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    await screen.findByRole('tab', { name: /current\.md/i });
+    const anchor = document.createElement('a');
+    anchor.href = 'https://example.com';
+    const event = createAnchorClickEvent(anchor);
+
+    const handled = tiptapMockState.lastOptions.editorProps.handleClick(editor.view, 1, event);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(openExternalUrlMock).toHaveBeenCalledWith('https://example.com');
+    });
+    expect(openDocumentMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: /current\.md/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
     );
   });
 
