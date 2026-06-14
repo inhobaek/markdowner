@@ -36,6 +36,15 @@ export async function newDocument() {
 }
 
 export async function openDocument(path: string) {
+  // Defense-in-depth: a nullish path means a caller (e.g. a link resolved to
+  // a markdown target whose `absolutePath` was missing) lost the path before
+  // reaching here. Surface a clear, actionable error instead of Tauri's
+  // cryptic "command open_document missing required key path".
+  if (path == null || path === '') {
+    throw new Error(
+      `Cannot open document: no file path was provided (received ${JSON.stringify(path)}).`,
+    );
+  }
   return invoke<AppSnapshot>('open_document', { path });
 }
 
