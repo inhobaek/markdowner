@@ -118,10 +118,32 @@ describe('PreventTableHoverSelection', () => {
     document.dispatchEvent(
       new MouseEvent('pointerdown', { button: 0, bubbles: true }),
     );
+    // A genuinely held button reports `buttons: 1` on its mousemoves — the
+    // gesture is a real drag, so it must pass through untouched.
     const handled = editor.view.someProp('handleDOMEvents', (handlers: any) =>
-      handlers?.mousemove?.(editor.view, { target: td } as unknown as MouseEvent),
+      handlers?.mousemove?.(editor.view, { target: td, buttons: 1 } as unknown as MouseEvent),
     );
     expect(handled).toBeFalsy();
+    // Release for cleanliness.
+    document.dispatchEvent(new MouseEvent('pointerup', { button: 0, bubbles: true }));
+  });
+
+  it('tears down a stale drag on the FIRST hover-move after a dropped release', () => {
+    // The real WebKit bug: a press happened (latch down) but its terminating
+    // release was dropped, so the button latch stays stuck. prosemirror-tables'
+    // `move` listener still lingers yet has NOT set its anchor, so the
+    // tableEditing state is still null. Teardown must fire on this very first
+    // hover-move (buttons: 0 = button physically up) — gating on the
+    // tableEditing state alone would let this first, damaging move through.
+    expect(tableEditingKey.getState(editor.state)).toBeNull();
+    document.dispatchEvent(
+      new MouseEvent('pointerdown', { button: 0, bubbles: true }),
+    );
+    const td = editor.view.dom.querySelector('td, th') as HTMLElement;
+    const handled = editor.view.someProp('handleDOMEvents', (handlers: any) =>
+      handlers?.mousemove?.(editor.view, { target: td, buttons: 0 } as unknown as MouseEvent),
+    );
+    expect(handled).toBe(true);
     // Release for cleanliness.
     document.dispatchEvent(new MouseEvent('pointerup', { button: 0, bubbles: true }));
   });

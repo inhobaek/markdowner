@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { CellSelection, tableEditingKey } from '@tiptap/pm/tables';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
 
 const pluginKey = new PluginKey('preventTableHoverSelection');
 
@@ -66,8 +67,19 @@ export const PreventTableHoverSelection = Extension.create({
       }
     };
 
-    const primaryButtonIsUp = (event: MouseEvent) =>
-      !primaryButtonDown || (event.buttons & 1) === 0;
+    // A genuinely held primary button reports `buttons & 1 === 1`; a true hover
+    // reports 0. Synthetic events may omit `buttons` — treat that as "up".
+    const primaryButtonHeld = (event: MouseEvent) => (((event.buttons ?? 0) & 1) === 1);
+
+    // A (possibly stale) table drag is "in flight" when EITHER our latch still
+    // thinks the primary button is down — meaning the terminating release was
+    // dropped (the WebKit bug) — OR prosemirror-tables already has an active
+    // cell-drag anchor. Checking the latch (not only the tableEditing state) is
+    // what catches the FIRST stale hover-move: prosemirror's own `move` listener
+    // sets its anchor state only AFTER it has already extended the selection, so
+    // gating purely on that state always lets the first damaging move through.
+    const tableDragInFlight = (state: EditorState) =>
+      primaryButtonDown || tableEditingKey.getState(state) != null;
 
     return [
       new Plugin({
@@ -148,8 +160,8 @@ export const PreventTableHoverSelection = Extension.create({
             // the cursor is travelling over portal chrome such as the floating
             // table toolbar. handleDOMEvents only sees moves whose target is
             // inside editorView.dom; this capture listener closes the gap.
-            if (!primaryButtonIsUp(event)) return;
-            if (tableEditingKey.getState(editorView.state) == null) return;
+            if (primaryButtonHeld(event)) return; // real drag — leave alone
+            if (!tableDragInFlight(editorView.state)) return; // clean hover
             primaryButtonDown = false;
             forceTableDragTeardown(editorView);
             event.stopPropagation();
@@ -178,17 +190,19 @@ export const PreventTableHoverSelection = Extension.create({
         props: {
           handleDOMEvents: {
             mousemove(view, event) {
-              // Safety net for the case where BOTH pointerup and mouseup were
-              // dropped, leaving the button latch stuck. Use the mousemove's own
-              // `buttons` (reliably 0 on a true hover) as a second release
-              // signal: if nothing is pressed but a table drag is still active,
-              // it can only be a stale drag — tear it down and swallow this move
-              // so it can't extend first. No-op during a genuine drag (button
-              // held) and for clean hovers (no active drag), so column-resize
-              // hover detection is unaffected.
-              const buttonUp = primaryButtonIsUp(event as MouseEvent);
-              if (!buttonUp) return false;
-              if (tableEditingKey.getState(view.state) == null) return false;
+              // Safety net for moves whose target is inside the editor (the
+              // capture listener above handles moves over portal chrome). The
+              // mousemove's own `buttons` is the authoritative release signal —
+              // reliably 0 on a true hover even when both pointerup and mouseup
+              // were dropped and the latch is stuck. If the button is up but a
+              // table drag is in flight, it can only be stale: tear it down and
+              // swallow this move so prosemirror's own `move` can't extend the
+              // selection first. No-op during a genuine drag (button held) and
+              // for clean hovers (no drag), so column-resize hover detection is
+              // unaffected.
+              if (primaryButtonHeld(event as MouseEvent)) return false;
+              if (!tableDragInFlight(view.state)) return false;
+              primaryButtonDown = false;
               forceTableDragTeardown(view);
               return true;
             },
