@@ -123,6 +123,8 @@ vi.mock('@uiw/react-codemirror', () => ({
     domEventHandlers: (handlers: unknown) => ({ domEventHandlers: handlers }),
     decorations: { from: () => 'decorations-from' },
   },
+  // Precedence wrapper used by the source-editor theme; identity passthrough.
+  Prec: { highest: (ext: unknown) => ext },
   // Stubs for the find-highlight field defined at sourceEditorExtensions
   // module load; behavior is covered by sourceFindHighlight.test.ts.
   StateEffect: { define: () => ({ of: (value: unknown) => ({ value }), is: () => false }) },

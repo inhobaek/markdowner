@@ -18,7 +18,7 @@ vi.mock('@/components/SourceEditorView', () => ({
       data-testid="source-editor-view"
       data-value={value}
       data-extension-count={String(extensions.length)}
-      data-theme={theme}
+      data-theme={typeof theme === 'string' ? theme : 'extension'}
       data-has-container-ref={String(Boolean(containerRef))}
     >
       <button type="button" onClick={() => onChange('updated source')}>
@@ -39,12 +39,40 @@ describe('SourceEditorPane', () => {
     cleanup();
   });
 
-  it('maps the active app theme to the CodeMirror source editor theme', () => {
+  it('themes the source editor with the code-block palette when highlight is on', () => {
+    render(
+      <SourceEditorPane
+        value="# Draft"
+        extensions={['markdown']}
+        themeKind="BuiltInDark"
+        codeBlockTheme="one-dark"
+        codeBlockHighlight
+        onChange={() => {}}
+        onStatistics={() => {}}
+        onCreateEditor={() => {}}
+        containerRef={{ current: null }}
+      />,
+    );
+
+    // A code-block theme is passed as a CodeMirror extension, not a builtin
+    // 'light'/'dark' string — so its syntax colours match the WYSIWYG palette.
+    expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-theme', 'extension');
+    expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-value', '# Draft');
+    expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-extension-count', '1');
+    expect(screen.getByTestId('source-editor-view')).toHaveAttribute(
+      'data-has-container-ref',
+      'true',
+    );
+  });
+
+  it('falls back to the plain light/dark editor when code-block highlight is off', () => {
     const { rerender } = render(
       <SourceEditorPane
         value="# Draft"
         extensions={['markdown']}
         themeKind="BuiltInDark"
+        codeBlockTheme="one-dark"
+        codeBlockHighlight={false}
         onChange={() => {}}
         onStatistics={() => {}}
         onCreateEditor={() => {}}
@@ -53,18 +81,14 @@ describe('SourceEditorPane', () => {
     );
 
     expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-theme', 'dark');
-    expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-value', '# Draft');
-    expect(screen.getByTestId('source-editor-view')).toHaveAttribute('data-extension-count', '1');
-    expect(screen.getByTestId('source-editor-view')).toHaveAttribute(
-      'data-has-container-ref',
-      'true',
-    );
 
     rerender(
       <SourceEditorPane
         value="# Draft"
         extensions={['markdown']}
         themeKind="CustomCss"
+        codeBlockTheme="one-dark"
+        codeBlockHighlight={false}
         onChange={() => {}}
         onStatistics={() => {}}
         onCreateEditor={() => {}}
@@ -85,6 +109,8 @@ describe('SourceEditorPane', () => {
         value="# Draft"
         extensions={[]}
         themeKind="BuiltInLight"
+        codeBlockTheme="github-light"
+        codeBlockHighlight
         onChange={onChange}
         onStatistics={onStatistics}
         onCreateEditor={onCreateEditor}

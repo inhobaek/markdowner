@@ -1,10 +1,11 @@
 import { memo, type Ref } from 'react';
-import CodeMirror, { type EditorView } from '@uiw/react-codemirror';
+import CodeMirror, { type EditorView, type Extension } from '@uiw/react-codemirror';
 
 export interface SourceEditorViewProps {
   value: string;
   extensions: unknown[];
-  theme: 'light' | 'dark';
+  /** A CodeMirror theme extension (code-block palette) or a built-in fallback. */
+  theme: Extension | 'light' | 'dark';
   onChange: (value: string) => void;
   onStatistics: (stats: unknown) => void;
   onCreateEditor: (view: EditorView) => void;

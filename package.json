@@ -23,7 +23,9 @@
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.2",
+    "@codemirror/language": "^6.12.3",
     "@fontsource-variable/geist": "^5.2.8",
+    "@lezer/highlight": "^1.2.3",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tiptap/core": "^3.23.4",

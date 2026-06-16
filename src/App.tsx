@@ -5031,6 +5031,8 @@ export default function App() {
             value={localDraft}
             extensions={sourceEditorExtensions}
             themeKind={snapshot.theme.kind}
+            codeBlockTheme={resolveCodeBlockTheme(settings, snapshot.theme.kind)}
+            codeBlockHighlight={settings.codeBlockHighlight}
             onChange={handleSourceEditorChange}
             onStatistics={handleSourceEditorStatistics}
             onCreateEditor={handleSourceEditorCreate}
