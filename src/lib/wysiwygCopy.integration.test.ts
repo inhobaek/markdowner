@@ -14,6 +14,7 @@ import TaskList from '@tiptap/extension-task-list';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { Editor } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import { common, createLowlight } from 'lowlight';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -91,5 +92,23 @@ describe('serializeWysiwygSliceToMarkdown (real editor)', () => {
     const markdown = serializeWysiwygSliceToMarkdown(ed.state.selection.content(), ed);
 
     expect(markdown).toBe('- first\n- second\n- third');
+  });
+
+  it('copies a selected code block as raw code without markdown fences', () => {
+    const ed = loadMarkdown('```ts\nconst answer = 42;\nconsole.log(answer);\n```');
+    let codeBlockPos = -1;
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'codeBlock') {
+        codeBlockPos = pos;
+        return false;
+      }
+      return true;
+    });
+    expect(codeBlockPos).toBeGreaterThanOrEqual(0);
+    ed.view.dispatch(ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, codeBlockPos)));
+
+    const markdown = serializeWysiwygSliceToMarkdown(ed.state.selection.content(), ed);
+
+    expect(markdown).toBe('const answer = 42;\nconsole.log(answer);');
   });
 });

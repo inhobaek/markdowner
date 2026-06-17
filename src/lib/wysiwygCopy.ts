@@ -23,6 +23,25 @@ interface SliceLike {
   content: { toJSON: () => unknown };
 }
 
+type JsonNodeLike = {
+  type?: unknown;
+  text?: unknown;
+  content?: unknown;
+};
+
+function textFromJsonNode(node: JsonNodeLike): string {
+  if (typeof node.text === 'string') return node.text;
+  if (!Array.isArray(node.content)) return '';
+  return node.content.map((child) => textFromJsonNode(child as JsonNodeLike)).join('');
+}
+
+function rawTextForSingleCodeBlock(content: unknown): string | null {
+  if (!Array.isArray(content) || content.length !== 1) return null;
+  const [node] = content as JsonNodeLike[];
+  if (node?.type !== 'codeBlock') return null;
+  return textFromJsonNode(node);
+}
+
 /**
  * ProseMirror `clipboardTextSerializer` for the WYSIWYG surface: serialize
  * the copied/cut slice to markdown so the clipboard's `text/plain` flavor
@@ -44,6 +63,8 @@ export function serializeWysiwygSliceToMarkdown(
   if (!manager || typeof manager.serialize !== 'function') return '';
   const content = slice?.content?.toJSON?.();
   if (!content) return '';
+  const rawCode = rawTextForSingleCodeBlock(content);
+  if (rawCode !== null) return rawCode;
   try {
     // Wrap in a doc node: serializing a bare node array joins the blocks
     // with no separator ("# TitleBody"); the doc renderer is what inserts
