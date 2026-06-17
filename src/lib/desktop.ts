@@ -152,6 +152,10 @@ export async function openPathInDefaultApp(path: string): Promise<void> {
   return invoke<void>('open_path_in_default_app', { path });
 }
 
+export async function revealPathInFinder(path: string): Promise<void> {
+  return invoke<void>('reveal_path_in_finder', { path });
+}
+
 export interface WorkspaceSearchOptions {
   caseSensitive: boolean;
   wholeWord: boolean;

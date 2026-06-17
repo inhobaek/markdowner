@@ -2084,6 +2084,7 @@ pub fn run() {
             link_actions::resolve_markdown_link,
             link_actions::open_external_url,
             link_actions::open_path_in_default_app,
+            link_actions::reveal_path_in_finder,
             updater::check_for_update,
             updater::download_and_install_update,
         ])

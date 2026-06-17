@@ -11,6 +11,8 @@ export type CommandPaletteActions = {
   saveAs: () => void;
   exportHtml: () => void;
   exportPdf: () => void;
+  revealActiveFileInFinder: () => void;
+  revealProjectInFinder: () => void;
   toggleSidebar: () => void;
   showExplorerPanel: () => void;
   focusExplorerTree: () => void;
@@ -33,6 +35,10 @@ export type CommandPaletteActions = {
 
 type BuildCommandPaletteCommandsInput = {
   activeDocumentOpen: boolean;
+  /** A saved file path exists (false for unsaved/untitled docs). */
+  hasActiveDocumentPath?: boolean;
+  /** A workspace/project root folder is open. */
+  hasWorkspaceRoot?: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   settings: Settings;
@@ -42,7 +48,15 @@ type BuildCommandPaletteCommandsInput = {
 export function buildCommandPaletteCommands(
   input: BuildCommandPaletteCommandsInput,
 ): CommandPaletteCommand[] {
-  const { actions, activeDocumentOpen, canGoBack, canGoForward, settings } = input;
+  const {
+    actions,
+    activeDocumentOpen,
+    hasActiveDocumentPath = false,
+    hasWorkspaceRoot = false,
+    canGoBack,
+    canGoForward,
+    settings,
+  } = input;
 
   return [
     {
@@ -95,6 +109,20 @@ export function buildCommandPaletteCommands(
       label: 'Export to PDF…',
       disabled: !activeDocumentOpen,
       run: actions.exportPdf,
+    },
+    {
+      id: 'file.revealInFinder',
+      category: 'File',
+      label: 'Open Current File Location in Finder',
+      disabled: !hasActiveDocumentPath,
+      run: actions.revealActiveFileInFinder,
+    },
+    {
+      id: 'file.revealProjectInFinder',
+      category: 'File',
+      label: 'Open Current Project Location in Finder',
+      disabled: !hasWorkspaceRoot,
+      run: actions.revealProjectInFinder,
     },
     {
       id: 'view.toggleSidebar',

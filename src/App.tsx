@@ -87,6 +87,7 @@ import {
   openWorkspaceDocument,
   openExternalUrl,
   openPathInDefaultApp,
+  revealPathInFinder,
   replaceActiveDocumentSource,
   resolveMarkdownLink,
   saveActiveDocument,
@@ -4816,6 +4817,8 @@ export default function App() {
 
   const paletteCommands = buildCommandPaletteCommands({
     activeDocumentOpen,
+    hasActiveDocumentPath: snapshot.activeDocumentPath != null,
+    hasWorkspaceRoot: snapshot.rootDir != null,
     canGoBack: visitHistory.canGoBack(navHistory),
     canGoForward: visitHistory.canGoForward(navHistory),
     settings,
@@ -4827,6 +4830,34 @@ export default function App() {
       saveAs: () => void handleSaveAs(),
       exportHtml: () => void handleExportToHtml(),
       exportPdf: () => handleExportToPdf(),
+      revealActiveFileInFinder: () => {
+        void (async () => {
+          const path = snapshot.activeDocumentPath;
+          if (!path) {
+            announceShell('Save the file to reveal it in Finder');
+            return;
+          }
+          try {
+            await revealPathInFinder(path);
+          } catch (error) {
+            reportOperationError(error, 'Could not reveal the file in Finder');
+          }
+        })();
+      },
+      revealProjectInFinder: () => {
+        void (async () => {
+          const root = snapshot.rootDir;
+          if (!root) {
+            announceShell('Open a workspace to reveal the project in Finder');
+            return;
+          }
+          try {
+            await openPathInDefaultApp(root);
+          } catch (error) {
+            reportOperationError(error, 'Could not open the project in Finder');
+          }
+        })();
+      },
       toggleSidebar: () => handleToggleSidebar(),
       showExplorerPanel: () => handleShowExplorerPanel(),
       focusExplorerTree,

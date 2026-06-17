@@ -120,6 +120,17 @@ pub fn open_path_in_default_app(path: String) -> Result<(), String> {
     open_with_os_default(trimmed)
 }
 
+/// Reveals a path in the OS file manager, selecting the item itself (rather than
+/// opening it). On macOS this is Finder's `open -R`.
+#[tauri::command]
+pub fn reveal_path_in_finder(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Cannot reveal an empty path".to_string());
+    }
+    reveal_with_os_file_manager(trimmed)
+}
+
 fn open_with_os_default(target: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -141,6 +152,39 @@ fn open_with_os_default(target: &str) -> Result<(), String> {
     {
         std::process::Command::new("xdg-open")
             .arg(target)
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| format!("Failed to launch `xdg-open`: {err}"))
+    }
+}
+
+fn reveal_with_os_file_manager(target: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", target])
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| format!("Failed to launch `open -R`: {err}"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{target}"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| format!("Failed to launch `explorer`: {err}"))
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // No portable "reveal & select" exists on Linux; fall back to opening
+        // the containing folder so the user still lands at the item's location.
+        let folder = std::path::Path::new(target)
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string())
+            .unwrap_or_else(|| target.to_string());
+        std::process::Command::new("xdg-open")
+            .arg(folder)
             .spawn()
             .map(|_| ())
             .map_err(|err| format!("Failed to launch `xdg-open`: {err}"))

@@ -16,6 +16,8 @@ function actions(overrides: Partial<CommandPaletteActions> = {}): CommandPalette
     saveAs: vi.fn(),
     exportHtml: vi.fn(),
     exportPdf: vi.fn(),
+    revealActiveFileInFinder: vi.fn(),
+    revealProjectInFinder: vi.fn(),
     toggleSidebar: vi.fn(),
     showExplorerPanel: vi.fn(),
     focusExplorerTree: vi.fn(),
@@ -65,6 +67,8 @@ describe('buildCommandPaletteCommands', () => {
       'file.saveAs',
       'file.exportHtml',
       'file.exportPdf',
+      'file.revealInFinder',
+      'file.revealProjectInFinder',
       'view.toggleSidebar',
       'view.showExplorer',
       'view.toggleOutline',
@@ -125,6 +129,45 @@ describe('buildCommandPaletteCommands', () => {
     commands.find((command) => command.id === 'file.exportPdf')?.run();
     expect(exportHtml).toHaveBeenCalledTimes(1);
     expect(exportPdf).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the reveal-in-Finder commands without a file path or workspace', () => {
+    const commands = buildCommandPaletteCommands({
+      activeDocumentOpen: true,
+      hasActiveDocumentPath: false,
+      hasWorkspaceRoot: false,
+      canGoBack: true,
+      canGoForward: true,
+      settings: settings(),
+      actions: actions(),
+    });
+
+    expect(commands.find((c) => c.id === 'file.revealInFinder')?.disabled).toBe(true);
+    expect(commands.find((c) => c.id === 'file.revealProjectInFinder')?.disabled).toBe(true);
+  });
+
+  it('enables and wires the reveal-in-Finder commands when a path and workspace exist', () => {
+    const revealActiveFileInFinder = vi.fn();
+    const revealProjectInFinder = vi.fn();
+    const commands = buildCommandPaletteCommands({
+      activeDocumentOpen: true,
+      hasActiveDocumentPath: true,
+      hasWorkspaceRoot: true,
+      canGoBack: true,
+      canGoForward: true,
+      settings: settings(),
+      actions: actions({ revealActiveFileInFinder, revealProjectInFinder }),
+    });
+
+    const file = commands.find((c) => c.id === 'file.revealInFinder');
+    const project = commands.find((c) => c.id === 'file.revealProjectInFinder');
+    expect(file?.disabled).toBe(false);
+    expect(project?.disabled).toBe(false);
+
+    file?.run();
+    project?.run();
+    expect(revealActiveFileInFinder).toHaveBeenCalledTimes(1);
+    expect(revealProjectInFinder).toHaveBeenCalledTimes(1);
   });
 
   it('disables Back/Forward per canGoBack/canGoForward and wires the actions', () => {
