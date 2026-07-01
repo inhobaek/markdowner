@@ -1,9 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
     env,
+    ffi::OsStr,
     io::{BufRead, BufReader, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::Mutex,
     time::Duration,
 };
@@ -332,6 +333,78 @@ impl DesktopBackend {
         self.runtime
             .open_workspace_document(path)
             .map_err(|error| error.to_string())?;
+        Ok(self.snapshot())
+    }
+
+    pub fn rename_workspace_document(
+        &mut self,
+        path: &Path,
+        new_name: &str,
+    ) -> Result<AppSnapshot, String> {
+        let known_document = {
+            let workspace = self.runtime.workspace();
+            workspace
+                .workspace_documents()
+                .iter()
+                .any(|document| document.as_path() == path)
+                || workspace
+                    .open_documents()
+                    .iter()
+                    .any(|document| document.backing_path() == Some(path))
+                || workspace
+                    .recent_documents()
+                    .iter()
+                    .any(|document| document.as_path() == path)
+        };
+        if !known_document {
+            return Err(format!(
+                "Could not rename file '{}' because it is not open, recent, or in the current workspace",
+                path.display()
+            ));
+        }
+
+        let root_dir = self
+            .runtime
+            .workspace()
+            .root_dir()
+            .map(Path::to_path_buf);
+        let parent = path.parent().ok_or_else(|| {
+            format!(
+                "Could not rename file '{}': missing parent directory",
+                path.display()
+            )
+        })?;
+        let new_name = validate_rename_file_name(new_name)?;
+        let new_path = parent.join(new_name);
+
+        if new_path == path {
+            return Ok(self.snapshot());
+        }
+
+        if new_path.exists() {
+            return Err(format!(
+                "Could not rename file '{}' because '{}' already exists",
+                path.display(),
+                new_path.display()
+            ));
+        }
+
+        std::fs::rename(path, &new_path).map_err(|error| {
+            format!(
+                "Could not rename file '{}' to '{}': {error}",
+                path.display(),
+                new_path.display()
+            )
+        })?;
+
+        if let Some(root_dir) = root_dir {
+            self.runtime
+                .open_workspace(&root_dir)
+                .map_err(|error| error.to_string())?;
+        }
+        self.runtime
+            .workspace_mut()
+            .retarget_document_path(path, new_path);
         Ok(self.snapshot())
     }
 
@@ -1710,6 +1783,34 @@ fn open_workspace_document(
     })
 }
 
+fn validate_rename_file_name(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("File name cannot be empty".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("File name cannot contain path separators".to_string());
+    }
+
+    let mut components = Path::new(trimmed).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(value)), None) if value == OsStr::new(trimmed) => Ok(trimmed),
+        _ => Err("File name must be a single file name".to_string()),
+    }
+}
+
+#[tauri::command]
+fn rename_workspace_document(
+    path: String,
+    new_name: String,
+    state: State<'_, DesktopAppState>,
+    app_handle: AppHandle,
+) -> Result<AppSnapshot, String> {
+    with_backend_and_menu(state, app_handle, |backend| {
+        backend.rename_workspace_document(Path::new(&path), &new_name)
+    })
+}
+
 #[tauri::command]
 fn replace_active_document_source(
     source: String,
@@ -2265,6 +2366,7 @@ pub fn run() {
             open_document,
             open_workspace,
             open_workspace_document,
+            rename_workspace_document,
             replace_active_document_source,
             save_active_document,
             save_active_document_as,
@@ -2834,6 +2936,95 @@ mod tests {
             fs::read_to_string(&original_path).unwrap(),
             "# Notes\n\nOriginal"
         );
+    }
+
+    #[test]
+    fn backend_rename_workspace_document_retargets_workspace_and_active_document() {
+        let temp = tempdir().unwrap();
+        let workspace_path = temp.path().join("workspace");
+        fs::create_dir_all(&workspace_path).unwrap();
+        let original_path = workspace_path.join("draft.md");
+        let renamed_path = workspace_path.join("renamed.md");
+        fs::write(&original_path, "# Draft").unwrap();
+
+        let mut backend = DesktopBackend::new(None);
+        backend.open_workspace(&workspace_path).unwrap();
+        backend.open_workspace_document(&original_path).unwrap();
+        let snapshot = backend
+            .rename_workspace_document(&original_path, "renamed.md")
+            .unwrap();
+
+        assert!(!original_path.exists());
+        assert_eq!(fs::read_to_string(&renamed_path).unwrap(), "# Draft");
+        assert_eq!(
+            snapshot.active_document_path.as_deref(),
+            Some(renamed_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            snapshot.workspace_documents,
+            vec![renamed_path.to_string_lossy().into_owned()]
+        );
+        assert_eq!(
+            snapshot.recent_documents,
+            vec![renamed_path.to_string_lossy().into_owned()]
+        );
+    }
+
+    #[test]
+    fn backend_rename_workspace_document_retargets_recent_document_without_workspace() {
+        let temp = tempdir().unwrap();
+        let original_path = temp.path().join("draft.md");
+        let renamed_path = temp.path().join("renamed.md");
+        fs::write(&original_path, "# Draft").unwrap();
+
+        let mut backend = DesktopBackend::new(None);
+        backend
+            .runtime
+            .workspace_mut()
+            .restore_recent_documents(vec![original_path.clone()]);
+        let snapshot = backend
+            .rename_workspace_document(&original_path, "renamed.md")
+            .unwrap();
+
+        assert!(!original_path.exists());
+        assert_eq!(fs::read_to_string(&renamed_path).unwrap(), "# Draft");
+        assert!(snapshot.workspace_documents.is_empty());
+        assert_eq!(
+            snapshot.recent_documents,
+            vec![renamed_path.to_string_lossy().into_owned()]
+        );
+    }
+
+    #[test]
+    fn backend_rename_workspace_document_rejects_invalid_or_existing_names() {
+        let temp = tempdir().unwrap();
+        let workspace_path = temp.path().join("workspace");
+        fs::create_dir_all(&workspace_path).unwrap();
+        let original_path = workspace_path.join("draft.md");
+        let existing_path = workspace_path.join("existing.md");
+        fs::write(&original_path, "# Draft").unwrap();
+        fs::write(&existing_path, "# Existing").unwrap();
+
+        let mut backend = DesktopBackend::new(None);
+        backend.open_workspace(&workspace_path).unwrap();
+
+        assert!(
+            backend
+                .rename_workspace_document(&original_path, "../escape.md")
+                .is_err()
+        );
+        assert!(
+            backend
+                .rename_workspace_document(&original_path, "nested/escape.md")
+                .is_err()
+        );
+        assert!(
+            backend
+                .rename_workspace_document(&original_path, "existing.md")
+                .is_err()
+        );
+        assert!(original_path.exists());
+        assert_eq!(fs::read_to_string(&existing_path).unwrap(), "# Existing");
     }
 
     #[test]

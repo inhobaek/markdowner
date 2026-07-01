@@ -1,10 +1,13 @@
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronDown,
   FilePlus,
@@ -22,6 +25,7 @@ import type { OpenEditorItem } from '@/lib/shellModel';
 import { cn } from '@/lib/utils';
 
 type ExplorerSectionId = 'editors' | 'workspace' | 'recent';
+type ExplorerRenameScope = 'open-editor' | 'recent';
 
 const COLLAPSED_SECTIONS_STORAGE_KEY = 'markdowner.explorer.collapsedSections';
 
@@ -45,6 +49,7 @@ export interface ExplorerPanelProps {
   onSelectOpenEditor: (id: string) => void;
   onCloseOpenEditor: (id: string) => void;
   onOpenRecentDocument: (path: string) => void;
+  onRenameFile: (path: string, newName: string) => Promise<void> | void;
   renderWorkspaceTreeNodes: () => ReactNode;
   displayFileName: (path: string) => string;
   displayWorkspacePath: (path: string, rootDir: string | null) => string;
@@ -68,6 +73,7 @@ export function ExplorerPanel({
   onSelectOpenEditor,
   onCloseOpenEditor,
   onOpenRecentDocument,
+  onRenameFile,
   renderWorkspaceTreeNodes,
   displayFileName,
   displayWorkspacePath,
@@ -76,6 +82,20 @@ export function ExplorerPanel({
   const [collapsedSections, setCollapsedSections] = useState<Record<ExplorerSectionId, boolean>>(
     readCollapsedSections,
   );
+  const [renameState, setRenameState] = useState<{
+    scope: ExplorerRenameScope;
+    path: string;
+    value: string;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    scope: ExplorerRenameScope;
+    path: string;
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const contextMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const submittingRenameKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -89,16 +109,86 @@ export function ExplorerPanel({
     }
   }, [collapsedSections]);
 
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    contextMenuButtonRef.current?.focus();
+
+    const closeContextMenu = () => setContextMenu(null);
+    const closeContextMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu(null);
+      }
+    };
+
+    window.addEventListener('click', closeContextMenu);
+    window.addEventListener('keydown', closeContextMenuOnEscape);
+    return () => {
+      window.removeEventListener('click', closeContextMenu);
+      window.removeEventListener('keydown', closeContextMenuOnEscape);
+    };
+  }, [contextMenu]);
+
   const toggleSection = useCallback((id: ExplorerSectionId) => {
     setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
+
+  const openContextMenu = (
+    scope: ExplorerRenameScope,
+    path: string | null,
+    name: string,
+    event: ReactMouseEvent<HTMLElement>,
+  ) => {
+    if (!path) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearBrowserTextSelection();
+    setContextMenu({
+      scope,
+      path,
+      name,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const renameKey = (scope: ExplorerRenameScope, path: string) => `${scope}:${path}`;
+
+  const cancelRename = (scope: ExplorerRenameScope, path: string) => {
+    if (submittingRenameKeyRef.current === renameKey(scope, path)) return;
+    setRenameState((current) =>
+      current?.scope === scope && current.path === path ? null : current,
+    );
+  };
+
+  const commitRename = async (scope: ExplorerRenameScope, path: string, originalName: string) => {
+    const value =
+      renameState?.scope === scope && renameState.path === path ? renameState.value.trim() : '';
+    if (!value || value === originalName) {
+      setRenameState((current) =>
+        current?.scope === scope && current.path === path ? null : current,
+      );
+      return;
+    }
+
+    const key = renameKey(scope, path);
+    submittingRenameKeyRef.current = key;
+    try {
+      await onRenameFile(path, value);
+    } finally {
+      submittingRenameKeyRef.current = null;
+      setRenameState((current) =>
+        current?.scope === scope && current.path === path ? null : current,
+      );
+    }
+  };
 
   const editorsCollapsed = collapsedSections.editors;
   const workspaceCollapsed = collapsedSections.workspace;
   const recentCollapsed = collapsedSections.recent;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" onKeyDown={handleExplorerKeyDown}>
+    <div className="flex min-h-0 flex-1 select-none flex-col" onKeyDown={handleExplorerKeyDown}>
       <div className="flex h-9 shrink-0 items-center justify-between px-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-foreground">
           EXPLORER
@@ -189,42 +279,85 @@ export function ExplorerPanel({
             {openEditors.length === 0 ? (
               <p className="px-5 py-1.5 text-xs text-muted-foreground/70">No open editors</p>
             ) : (
-              openEditors.map((item) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    'group flex min-h-6 items-center gap-1.5 px-2 text-xs',
-                    item.isActive && 'bg-accent text-accent-foreground',
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left"
-                    aria-label="Switch to open editor"
-                    data-explorer-row=""
-                    title={item.path ?? item.name}
-                    onClick={() => onSelectOpenEditor(item.id)}
+              openEditors.map((item) => {
+                const itemPath = item.path;
+                const activeRenameState =
+                  itemPath &&
+                  renameState?.scope === 'open-editor' &&
+                  renameState.path === itemPath
+                    ? renameState
+                    : null;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      'group flex min-h-6 items-center gap-1.5 px-2 text-xs',
+                      item.isActive && 'bg-accent text-accent-foreground',
+                    )}
                   >
-                    <FileText
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <span className={cn('truncate', item.missing && 'line-through opacity-70')}>
-                      {item.name}
-                    </span>
-                    {item.isDirty ? <span aria-label="Unsaved changes">•</span> : null}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex size-5 shrink-0 items-center justify-center rounded opacity-0 hover:bg-muted group-hover:opacity-100"
-                    aria-label="Close open editor"
-                    title={`Close ${item.name}`}
-                    onClick={() => onCloseOpenEditor(item.id)}
-                  >
-                    <X className="size-3" aria-hidden="true" />
-                  </button>
-                </div>
-              ))
+                    {activeRenameState && itemPath ? (
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left">
+                        <FileText
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <ExplorerRenameInput
+                          scope="open-editor"
+                          path={itemPath}
+                          value={activeRenameState.value}
+                          label={`Rename ${item.name}`}
+                          originalName={item.name}
+                          onValueChange={(value) =>
+                            setRenameState((current) =>
+                              current?.scope === 'open-editor' && current.path === itemPath
+                                ? { ...current, value }
+                                : current,
+                            )
+                          }
+                          onCancel={cancelRename}
+                          onCommit={commitRename}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left"
+                        aria-label="Switch to open editor"
+                        data-explorer-row=""
+                        title={item.path ?? item.name}
+                        onClick={() => onSelectOpenEditor(item.id)}
+                        onMouseDown={(event) => {
+                          if (event.button === 2) {
+                            openContextMenu('open-editor', item.path, item.name, event);
+                          }
+                        }}
+                        onContextMenu={(event) =>
+                          openContextMenu('open-editor', item.path, item.name, event)
+                        }
+                      >
+                        <FileText
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span className={cn('truncate', item.missing && 'line-through opacity-70')}>
+                          {item.name}
+                        </span>
+                        {item.isDirty ? <span aria-label="Unsaved changes">•</span> : null}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="flex size-5 shrink-0 items-center justify-center rounded opacity-0 hover:bg-muted group-hover:opacity-100"
+                      aria-label="Close open editor"
+                      title={`Close ${item.name}`}
+                      onClick={() => onCloseOpenEditor(item.id)}
+                    >
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         )}
@@ -266,7 +399,7 @@ export function ExplorerPanel({
               disabled={busy}
               aria-label="Filter files"
               data-explorer-filter=""
-              className="mx-3 mb-1 h-7 w-[calc(100%-1.5rem)] rounded-sm text-xs"
+              className="mx-3 mb-1 h-7 w-[calc(100%-1.5rem)] select-text rounded-sm text-xs"
             />
             {filteredWorkspaceTreeLength === 0 ? (
               <p className="px-3 text-xs text-muted-foreground">No files match this filter.</p>
@@ -312,6 +445,44 @@ export function ExplorerPanel({
           <div id="explorer-section-recent" className="flex flex-col py-1">
             {recentDocuments.slice(0, 5).map((path) => {
               const isActive = path === activeDocumentPath;
+              const name = displayFileName(path);
+              const activeRenameState =
+                renameState?.scope === 'recent' && renameState.path === path ? renameState : null;
+
+              if (activeRenameState) {
+                return (
+                  <div
+                    key={path}
+                    className={cn(
+                      'explorer-tree-row flex w-full items-center gap-1.5 text-left text-xs',
+                      isActive && 'bg-accent text-accent-foreground',
+                    )}
+                    title={path}
+                  >
+                    <FileText
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <ExplorerRenameInput
+                      scope="recent"
+                      path={path}
+                      value={activeRenameState.value}
+                      label={`Rename ${name}`}
+                      originalName={name}
+                      onValueChange={(value) =>
+                        setRenameState((current) =>
+                          current?.scope === 'recent' && current.path === path
+                            ? { ...current, value }
+                            : current,
+                        )
+                      }
+                      onCancel={cancelRename}
+                      onCommit={commitRename}
+                    />
+                  </div>
+                );
+              }
+
               return (
                 <button
                   key={path}
@@ -322,6 +493,12 @@ export function ExplorerPanel({
                   )}
                   data-explorer-row=""
                   onClick={() => onOpenRecentDocument(path)}
+                  onMouseDown={(event) => {
+                    if (event.button === 2) {
+                      openContextMenu('recent', path, name, event);
+                    }
+                  }}
+                  onContextMenu={(event) => openContextMenu('recent', path, name, event)}
                   disabled={busy}
                   title={path}
                 >
@@ -329,7 +506,7 @@ export function ExplorerPanel({
                     className="size-3.5 shrink-0 text-muted-foreground"
                     aria-hidden="true"
                   />
-                  <span className="min-w-0 flex-1 truncate">{displayFileName(path)}</span>
+                  <span className="min-w-0 flex-1 truncate">{name}</span>
                   <span className="sr-only" aria-hidden="true">
                     {displayWorkspacePath(path, rootDir)}
                   </span>
@@ -339,8 +516,98 @@ export function ExplorerPanel({
           </div>
         )}
       </section>
+      {contextMenu
+        ? createPortal(
+            <div
+              role="menu"
+              aria-label={`File actions for ${contextMenu.name}`}
+              className="fixed z-[1000] min-w-32 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              <button
+                ref={contextMenuButtonRef}
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-xs outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                onClick={() => {
+                  setRenameState({
+                    scope: contextMenu.scope,
+                    path: contextMenu.path,
+                    value: contextMenu.name,
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                Rename
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
+}
+
+function ExplorerRenameInput({
+  scope,
+  path,
+  value,
+  label,
+  originalName,
+  onValueChange,
+  onCancel,
+  onCommit,
+}: {
+  scope: ExplorerRenameScope;
+  path: string;
+  value: string;
+  label: string;
+  originalName: string;
+  onValueChange: (value: string) => void;
+  onCancel: (scope: ExplorerRenameScope, path: string) => void;
+  onCommit: (scope: ExplorerRenameScope, path: string, originalName: string) => Promise<void>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      aria-label={label}
+      className="min-w-0 flex-1 select-text rounded-sm border border-ring bg-background px-1 py-0 text-xs text-foreground outline-none"
+      onChange={(event) => onValueChange(event.target.value)}
+      onBlur={() => onCancel(scope, path)}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          onCancel(scope, path);
+          return;
+        }
+
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          void onCommit(scope, path, originalName);
+        }
+      }}
+    />
+  );
+}
+
+function clearBrowserTextSelection() {
+  window.getSelection()?.removeAllRanges();
 }
 
 function readCollapsedSections(): Record<ExplorerSectionId, boolean> {

@@ -85,6 +85,7 @@ import {
   openDocument,
   openWorkspace,
   openWorkspaceDocument,
+  renameWorkspaceDocument,
   openExternalUrl,
   openPathInDefaultApp,
   revealPathInFinder,
@@ -182,6 +183,7 @@ import {
   refreshActiveDocumentTabFromSnapshot,
   refreshSwitchedDocumentTabFromSnapshot,
   rememberClosedDocumentTab,
+  retargetDocumentTabPath,
   resolveCloseTabTransition,
   resolveDocumentTabViewState,
   resolveSettingsTabToggle,
@@ -1624,6 +1626,7 @@ export default function App() {
   // Tracks the mode the previous render saw so the mode-change effect can
   // tell which editor "owned" the cursor at the moment of the switch.
   const previousModeForCursorRef = useRef<EditorMode>(currentMode);
+  const previousActiveDocumentOpenForCursorRef = useRef(activeDocumentOpen);
   const typewriterModeEnabledRef = useRef(settings.typewriterModeEnabled);
   useEffect(() => {
     typewriterModeEnabledRef.current = settings.typewriterModeEnabled;
@@ -3919,9 +3922,12 @@ export default function App() {
   // end ≠ source's actual line N).
   useEffect(() => {
     const previousMode = previousModeForCursorRef.current;
+    const previousActiveDocumentOpen = previousActiveDocumentOpenForCursorRef.current;
     previousModeForCursorRef.current = currentMode;
+    previousActiveDocumentOpenForCursorRef.current = activeDocumentOpen;
     if (previousMode === currentMode) return;
     if (!activeDocumentOpen) return;
+    if (!previousActiveDocumentOpen) return;
 
     const editorInstance = editorInstanceRef.current;
     // Resolve the cursor's markdown offset in the mode we're *leaving*.
@@ -4148,6 +4154,25 @@ export default function App() {
 
   const handleOpenWorkspaceDocument = async (path: string) => {
     await openKnownDocumentPath(path, openWorkspaceDocument);
+  };
+
+  const handleRenameWorkspaceDocument = async (path: string, newName: string) => {
+    const newPath = siblingPathWithName(path, newName);
+    await withBusy(async () => {
+      await syncActiveDraftBestEffort();
+      const next = await renameWorkspaceDocument(path, newName);
+      applySnapshot(next);
+      setTabs((current) => {
+        const retargetedTabs = retargetDocumentTabPath({
+          tabs: current,
+          oldPath: path,
+          newPath,
+          newName: displayFileName(newPath),
+        });
+        tabsRef.current = retargetedTabs;
+        return retargetedTabs;
+      });
+    }, 'Could not rename file');
   };
 
   const handleOpenRecentDocument = async (path: string) => {
@@ -5090,6 +5115,7 @@ export default function App() {
           onSelectOpenEditor={(id) => void switchToTab(id)}
           onCloseOpenEditor={(id) => void handleCloseTab(id)}
           onOpenRecentDocument={handleOpenRecentDocument}
+          onRenameFile={(path, newName) => handleRenameWorkspaceDocument(path, newName)}
           renderWorkspaceTreeNodes={() => (
             <WorkspaceTree
               nodes={filteredWorkspaceTree}
@@ -5098,6 +5124,7 @@ export default function App() {
               filtering={filteringWorkspace}
               onToggleFolder={handleToggleWorkspaceFolder}
               onOpenFile={(path) => void handleOpenWorkspaceDocument(path)}
+              onRenameFile={(path, newName) => handleRenameWorkspaceDocument(path, newName)}
             />
           )}
           displayFileName={displayFileName}
@@ -5279,4 +5306,12 @@ export default function App() {
       <ImeDebugOverlay />
     </div>
   );
+}
+
+function siblingPathWithName(path: string, name: string): string {
+  const slashIndex = path.lastIndexOf('/');
+  const backslashIndex = path.lastIndexOf('\\');
+  const separatorIndex = Math.max(slashIndex, backslashIndex);
+  if (separatorIndex < 0) return name;
+  return `${path.slice(0, separatorIndex + 1)}${name}`;
 }

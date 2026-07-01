@@ -203,6 +203,13 @@ type RefreshSwitchedDocumentTabFromSnapshotInput = {
   snapshot: DocumentTabSnapshotMetadataInput;
 };
 
+type RetargetDocumentTabPathInput = {
+  tabs: readonly DocumentTab[];
+  oldPath: string;
+  newPath: string;
+  newName: string;
+};
+
 type CloseTabTransition =
   | { kind: 'missing' }
   | { kind: 'clearSurface' }
@@ -761,6 +768,19 @@ export function refreshSwitchedDocumentTabFromSnapshot(
     name: input.snapshot.activeDocumentName,
     source: input.snapshot.activeDocumentSource,
   });
+}
+
+export function retargetDocumentTabPath(input: RetargetDocumentTabPathInput): DocumentTab[] {
+  return input.tabs.map((tab) =>
+    tab.kind === 'document' && tab.path === input.oldPath
+      ? {
+          ...tab,
+          path: input.newPath,
+          name: input.newName,
+          missing: false,
+        }
+      : tab,
+  );
 }
 
 export function stashDocumentTabDraft(

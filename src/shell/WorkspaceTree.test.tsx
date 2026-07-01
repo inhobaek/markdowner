@@ -42,6 +42,7 @@ describe('WorkspaceTree', () => {
         filtering={false}
         onToggleFolder={vi.fn()}
         onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
       />,
     );
 
@@ -64,6 +65,7 @@ describe('WorkspaceTree', () => {
         filtering={false}
         onToggleFolder={vi.fn()}
         onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
       />,
     );
 
@@ -81,6 +83,7 @@ describe('WorkspaceTree', () => {
         filtering={true}
         onToggleFolder={vi.fn()}
         onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
       />,
     );
 
@@ -103,6 +106,7 @@ describe('WorkspaceTree', () => {
         filtering={false}
         onToggleFolder={onToggleFolder}
         onOpenFile={onOpenFile}
+        onRenameFile={vi.fn()}
       />,
     );
 
@@ -116,5 +120,102 @@ describe('WorkspaceTree', () => {
         'guides/draft.md',
       ),
     ).toHaveClass('sr-only');
+  });
+
+  it('renames a file from the right-click context menu', async () => {
+    const onOpenFile = vi.fn();
+    const onRenameFile = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <WorkspaceTree
+        nodes={tree}
+        activePath={null}
+        collapsedKeys={[]}
+        filtering={false}
+        onToggleFolder={vi.fn()}
+        onOpenFile={onOpenFile}
+        onRenameFile={onRenameFile}
+      />,
+    );
+
+    const file = screen.getByRole('button', { name: /draft\.md/i });
+    fireEvent.contextMenu(file, { clientX: 12, clientY: 24 });
+
+    expect(onOpenFile).not.toHaveBeenCalled();
+    const menu = screen.getByRole('menu', { name: /file actions for draft\.md/i });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /rename/i }));
+
+    const input = screen.getByRole('textbox', { name: /rename draft\.md/i });
+    expect(input).toHaveValue('draft.md');
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: 'renamed.md' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRenameFile).toHaveBeenCalledWith('/tmp/project/guides/draft.md', 'renamed.md');
+  });
+
+  it('opens the file context menu from a secondary-button mouse down', () => {
+    render(
+      <WorkspaceTree
+        nodes={tree}
+        activePath={null}
+        collapsedKeys={[]}
+        filtering={false}
+        onToggleFolder={vi.fn()}
+        onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: /draft\.md/i }), {
+      button: 2,
+      clientX: 12,
+      clientY: 24,
+    });
+
+    expect(screen.getByRole('menu', { name: /file actions for draft\.md/i })).toBeInTheDocument();
+  });
+
+  it('clears browser text selection when opening the file context menu', () => {
+    const removeAllRanges = vi.fn();
+    const getSelection = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ removeAllRanges } as unknown as Selection);
+
+    render(
+      <WorkspaceTree
+        nodes={tree}
+        activePath={null}
+        collapsedKeys={[]}
+        filtering={false}
+        onToggleFolder={vi.fn()}
+        onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /draft\.md/i }));
+
+    expect(removeAllRanges).toHaveBeenCalled();
+    getSelection.mockRestore();
+  });
+
+  it('does not start rename from Enter on the file row', () => {
+    render(
+      <WorkspaceTree
+        nodes={tree}
+        activePath={null}
+        collapsedKeys={[]}
+        filtering={false}
+        onToggleFolder={vi.fn()}
+        onOpenFile={vi.fn()}
+        onRenameFile={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: /draft\.md/i }), { key: 'Enter' });
+
+    expect(screen.queryByRole('textbox', { name: /rename draft\.md/i })).not.toBeInTheDocument();
   });
 });

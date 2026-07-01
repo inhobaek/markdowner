@@ -242,6 +242,11 @@ impl OpenDocument {
         self.dirty = false;
         self.synced_source = Some(self.source.clone());
     }
+
+    fn retarget_path(&mut self, path: PathBuf) {
+        self.backing_path = Some(path.clone());
+        self.path = path;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -547,6 +552,45 @@ impl WorkspaceState {
         self.remember_recent(path);
         self.clear_error();
         true
+    }
+
+    pub fn retarget_document_path(&mut self, old_path: &Path, new_path: PathBuf) {
+        for document in &mut self.open_documents {
+            if document.path() == old_path {
+                document.retarget_path(new_path.clone());
+            }
+        }
+
+        if self
+            .active_document
+            .as_deref()
+            .is_some_and(|active_path| active_path == old_path)
+        {
+            self.active_document = Some(new_path.clone());
+        }
+
+        for document in &mut self.workspace_documents {
+            if document.as_path() == old_path {
+                *document = new_path.clone();
+            }
+        }
+        self.workspace_documents.sort();
+        self.workspace_documents.dedup();
+
+        for document in &mut self.recent_documents {
+            if document.as_path() == old_path {
+                *document = new_path.clone();
+            }
+        }
+        let mut deduped_recent = Vec::with_capacity(self.recent_documents.len());
+        for document in self.recent_documents.drain(..) {
+            if deduped_recent.iter().all(|existing| existing != &document) {
+                deduped_recent.push(document);
+            }
+        }
+        self.recent_documents = deduped_recent;
+
+        self.clear_error();
     }
 
     pub fn last_error(&self) -> Option<&str> {
