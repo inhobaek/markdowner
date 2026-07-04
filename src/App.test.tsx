@@ -1360,16 +1360,58 @@ describe('App recent documents', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /rename/i }));
 
     const input = screen.getByRole('textbox', { name: /rename draft\.md/i });
-    fireEvent.change(input, { target: { value: 'renamed.md' } });
+    expect(input).toHaveValue('draft');
+    fireEvent.change(input, { target: { value: 'renamed' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => {
       expect(renameWorkspaceDocumentMock).toHaveBeenCalledWith(
         '/tmp/project/guides/draft.md',
-        'renamed.md',
+        'renamed',
       );
     });
     expect(await screen.findByRole('tab', { name: /renamed\.md/i })).toBeInTheDocument();
+
+    window.localStorage.removeItem('markdowner.sidebarOpen');
+  });
+
+  it('does not rename when syncing the active draft fails', async () => {
+    window.localStorage.setItem('markdowner.sidebarOpen', 'true');
+    bootstrapMock.mockResolvedValue(
+      baseSnapshot({
+        activeDocumentName: 'draft.md',
+        rootDir: '/tmp/project',
+        workspaceDocuments: ['/tmp/project/guides/draft.md'],
+        activeDocumentPath: '/tmp/project/guides/draft.md',
+        activeDocumentSource: '# Draft',
+        mode: 'Editor',
+      }),
+    );
+    replaceActiveDocumentSourceMock.mockRejectedValue(new Error('disk full'));
+
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText('Source editor'), {
+      target: { value: '# Changed' },
+    });
+    const explorer = await screen.findByRole('complementary', { name: /explorer/i });
+    const draft = await within(explorer).findByRole('button', { name: /draft\.md/i });
+
+    fireEvent.contextMenu(draft, { clientX: 12, clientY: 24 });
+    fireEvent.click(screen.getByRole('menuitem', { name: /rename/i }));
+    fireEvent.change(screen.getByRole('textbox', { name: /rename draft\.md/i }), {
+      target: { value: 'renamed' },
+    });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /rename draft\.md/i }), {
+      key: 'Enter',
+    });
+
+    await waitFor(() => {
+      expect(replaceActiveDocumentSourceMock).toHaveBeenCalledWith('# Changed');
+    });
+    expect(renameWorkspaceDocumentMock).not.toHaveBeenCalled();
 
     window.localStorage.removeItem('markdowner.sidebarOpen');
   });

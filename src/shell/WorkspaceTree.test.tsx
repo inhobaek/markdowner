@@ -146,13 +146,13 @@ describe('WorkspaceTree', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: /rename/i }));
 
     const input = screen.getByRole('textbox', { name: /rename draft\.md/i });
-    expect(input).toHaveValue('draft.md');
+    expect(input).toHaveValue('draft');
     expect(document.activeElement).toBe(input);
 
-    fireEvent.change(input, { target: { value: 'renamed.md' } });
+    fireEvent.change(input, { target: { value: 'renamed' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(onRenameFile).toHaveBeenCalledWith('/tmp/project/guides/draft.md', 'renamed.md');
+    expect(onRenameFile).toHaveBeenCalledWith('/tmp/project/guides/draft.md', 'renamed');
   });
 
   it('opens the file context menu from a secondary-button mouse down', () => {

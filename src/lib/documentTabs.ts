@@ -771,16 +771,26 @@ export function refreshSwitchedDocumentTabFromSnapshot(
 }
 
 export function retargetDocumentTabPath(input: RetargetDocumentTabPathInput): DocumentTab[] {
-  return input.tabs.map((tab) =>
-    tab.kind === 'document' && tab.path === input.oldPath
-      ? {
-          ...tab,
-          path: input.newPath,
-          name: input.newName,
-          missing: false,
-        }
-      : tab,
-  );
+  return input.tabs
+    .filter(
+      (tab) =>
+        !(
+          tab.kind === 'document' &&
+          tab.missing &&
+          tab.path === input.newPath &&
+          tab.path !== input.oldPath
+        ),
+    )
+    .map((tab) =>
+      tab.kind === 'document' && tab.path === input.oldPath
+        ? {
+            ...tab,
+            path: input.newPath,
+            name: input.newName,
+            missing: false,
+          }
+        : tab,
+    );
 }
 
 export function stashDocumentTabDraft(

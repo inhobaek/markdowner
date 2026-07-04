@@ -4157,9 +4157,9 @@ export default function App() {
   };
 
   const handleRenameWorkspaceDocument = async (path: string, newName: string) => {
-    const newPath = siblingPathWithName(path, newName);
+    const newPath = siblingPathWithBaseName(path, newName);
     await withBusy(async () => {
-      await syncActiveDraftBestEffort();
+      await syncActiveDraft();
       const next = await renameWorkspaceDocument(path, newName);
       applySnapshot(next);
       setTabs((current) => {
@@ -5308,10 +5308,13 @@ export default function App() {
   );
 }
 
-function siblingPathWithName(path: string, name: string): string {
+function siblingPathWithBaseName(path: string, name: string): string {
   const slashIndex = path.lastIndexOf('/');
   const backslashIndex = path.lastIndexOf('\\');
   const separatorIndex = Math.max(slashIndex, backslashIndex);
-  if (separatorIndex < 0) return name;
-  return `${path.slice(0, separatorIndex + 1)}${name}`;
+  const directory = separatorIndex < 0 ? '' : path.slice(0, separatorIndex + 1);
+  const fileName = path.slice(separatorIndex + 1);
+  const dotIndex = fileName.lastIndexOf('.');
+  const extension = dotIndex > 0 ? fileName.slice(dotIndex) : '';
+  return `${directory}${name}${extension}`;
 }

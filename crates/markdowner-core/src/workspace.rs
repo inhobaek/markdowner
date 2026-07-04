@@ -555,10 +555,17 @@ impl WorkspaceState {
     }
 
     pub fn retarget_document_path(&mut self, old_path: &Path, new_path: PathBuf) {
-        for document in &mut self.open_documents {
-            if document.path() == old_path {
-                document.retarget_path(new_path.clone());
-            }
+        if let Some(index) = self
+            .open_documents
+            .iter()
+            .position(|document| document.path() == old_path)
+        {
+            let mut document = self.open_documents.remove(index);
+            document.retarget_path(new_path.clone());
+            self.open_documents
+                .retain(|document| document.path() != new_path.as_path());
+            let index = index.min(self.open_documents.len());
+            self.open_documents.insert(index, document);
         }
 
         if self

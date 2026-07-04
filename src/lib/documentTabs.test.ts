@@ -178,6 +178,43 @@ describe('retargetDocumentTabPath', () => {
       tabs[2],
     ]);
   });
+
+  it('drops an existing missing tab at the renamed path', () => {
+    const tabs = [
+      documentTab({
+        id: 'old',
+        path: '/tmp/project/draft.md',
+        name: 'draft.md',
+        source: '# Draft',
+        draft: '# Draft edited',
+      }),
+      documentTab({
+        id: 'missing',
+        path: '/tmp/project/renamed.md',
+        name: 'renamed.md',
+        source: '',
+        draft: '',
+        missing: true,
+      }),
+    ];
+
+    expect(
+      retargetDocumentTabPath({
+        tabs,
+        oldPath: '/tmp/project/draft.md',
+        newPath: '/tmp/project/renamed.md',
+        newName: 'renamed.md',
+      }),
+    ).toEqual([
+      documentTab({
+        id: 'old',
+        path: '/tmp/project/renamed.md',
+        name: 'renamed.md',
+        source: '# Draft',
+        draft: '# Draft edited',
+      }),
+    ]);
+  });
 });
 
 describe('createMissingDocumentTab', () => {

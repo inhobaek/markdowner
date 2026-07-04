@@ -25,7 +25,7 @@ import type { OpenEditorItem } from '@/lib/shellModel';
 import { cn } from '@/lib/utils';
 
 type ExplorerSectionId = 'editors' | 'workspace' | 'recent';
-type ExplorerRenameScope = 'open-editor' | 'recent';
+type ExplorerRenameScope = 'open-editor';
 
 const COLLAPSED_SECTIONS_STORAGE_KEY = 'markdowner.explorer.collapsedSections';
 
@@ -328,13 +328,15 @@ export function ExplorerPanel({
                         title={item.path ?? item.name}
                         onClick={() => onSelectOpenEditor(item.id)}
                         onMouseDown={(event) => {
-                          if (event.button === 2) {
+                          if (event.button === 2 && !item.missing) {
                             openContextMenu('open-editor', item.path, item.name, event);
                           }
                         }}
-                        onContextMenu={(event) =>
-                          openContextMenu('open-editor', item.path, item.name, event)
-                        }
+                        onContextMenu={(event) => {
+                          if (!item.missing) {
+                            openContextMenu('open-editor', item.path, item.name, event);
+                          }
+                        }}
                       >
                         <FileText
                           className="size-3.5 shrink-0 text-muted-foreground"
@@ -446,43 +448,6 @@ export function ExplorerPanel({
             {recentDocuments.slice(0, 5).map((path) => {
               const isActive = path === activeDocumentPath;
               const name = displayFileName(path);
-              const activeRenameState =
-                renameState?.scope === 'recent' && renameState.path === path ? renameState : null;
-
-              if (activeRenameState) {
-                return (
-                  <div
-                    key={path}
-                    className={cn(
-                      'explorer-tree-row flex w-full items-center gap-1.5 text-left text-xs',
-                      isActive && 'bg-accent text-accent-foreground',
-                    )}
-                    title={path}
-                  >
-                    <FileText
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <ExplorerRenameInput
-                      scope="recent"
-                      path={path}
-                      value={activeRenameState.value}
-                      label={`Rename ${name}`}
-                      originalName={name}
-                      onValueChange={(value) =>
-                        setRenameState((current) =>
-                          current?.scope === 'recent' && current.path === path
-                            ? { ...current, value }
-                            : current,
-                        )
-                      }
-                      onCancel={cancelRename}
-                      onCommit={commitRename}
-                    />
-                  </div>
-                );
-              }
-
               return (
                 <button
                   key={path}
@@ -493,12 +458,6 @@ export function ExplorerPanel({
                   )}
                   data-explorer-row=""
                   onClick={() => onOpenRecentDocument(path)}
-                  onMouseDown={(event) => {
-                    if (event.button === 2) {
-                      openContextMenu('recent', path, name, event);
-                    }
-                  }}
-                  onContextMenu={(event) => openContextMenu('recent', path, name, event)}
                   disabled={busy}
                   title={path}
                 >
@@ -538,7 +497,7 @@ export function ExplorerPanel({
                   setRenameState({
                     scope: contextMenu.scope,
                     path: contextMenu.path,
-                    value: contextMenu.name,
+                    value: fileNameWithoutExtension(contextMenu.name),
                   });
                   setContextMenu(null);
                 }}
@@ -608,6 +567,11 @@ function ExplorerRenameInput({
 
 function clearBrowserTextSelection() {
   window.getSelection()?.removeAllRanges();
+}
+
+function fileNameWithoutExtension(name: string): string {
+  const dotIndex = name.lastIndexOf('.');
+  return dotIndex > 0 ? name.slice(0, dotIndex) : name;
 }
 
 function readCollapsedSections(): Record<ExplorerSectionId, boolean> {

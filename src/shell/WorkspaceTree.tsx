@@ -127,7 +127,10 @@ export function WorkspaceTree({
                 role="menuitem"
                 className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-xs outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
                 onClick={() => {
-                  setRenameState({ path: contextMenu.path, value: contextMenu.name });
+                  setRenameState({
+                    path: contextMenu.path,
+                    value: fileNameWithoutExtension(contextMenu.name),
+                  });
                   setContextMenu(null);
                 }}
               >
@@ -293,4 +296,9 @@ function WorkspaceTreeNodeView({
 
 function clearBrowserTextSelection() {
   window.getSelection()?.removeAllRanges();
+}
+
+function fileNameWithoutExtension(name: string): string {
+  const dotIndex = name.lastIndexOf('.');
+  return dotIndex > 0 ? name.slice(0, dotIndex) : name;
 }

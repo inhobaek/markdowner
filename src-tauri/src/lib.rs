@@ -21,8 +21,8 @@ use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
 };
 
-mod diagnostics;
 mod default_handler;
+mod diagnostics;
 mod link_actions;
 mod pdf_export;
 mod updater;
@@ -351,10 +351,6 @@ impl DesktopBackend {
                     .open_documents()
                     .iter()
                     .any(|document| document.backing_path() == Some(path))
-                || workspace
-                    .recent_documents()
-                    .iter()
-                    .any(|document| document.as_path() == path)
         };
         if !known_document {
             return Err(format!(
@@ -363,25 +359,21 @@ impl DesktopBackend {
             ));
         }
 
-        let root_dir = self
-            .runtime
-            .workspace()
-            .root_dir()
-            .map(Path::to_path_buf);
+        let root_dir = self.runtime.workspace().root_dir().map(Path::to_path_buf);
         let parent = path.parent().ok_or_else(|| {
             format!(
                 "Could not rename file '{}': missing parent directory",
                 path.display()
             )
         })?;
-        let new_name = validate_rename_file_name(new_name)?;
+        let new_name = rename_file_name_with_preserved_extension(path, new_name)?;
         let new_path = parent.join(new_name);
 
         if new_path == path {
             return Ok(self.snapshot());
         }
 
-        if new_path.exists() {
+        if new_path.exists() && !paths_refer_to_same_file(path, &new_path) {
             return Err(format!(
                 "Could not rename file '{}' because '{}' already exists",
                 path.display(),
@@ -1665,7 +1657,9 @@ fn spawn_cli_wait_listener(app_handle: AppHandle) {
 }
 
 fn handle_cli_wait_connection(app_handle: AppHandle, stream: UnixStream) {
-    let Ok(clone) = stream.try_clone() else { return };
+    let Ok(clone) = stream.try_clone() else {
+        return;
+    };
     let mut reader = BufReader::new(clone);
     let mut line = String::new();
     if reader.read_line(&mut line).is_err() {
@@ -1796,6 +1790,25 @@ fn validate_rename_file_name(name: &str) -> Result<&str, String> {
     match (components.next(), components.next()) {
         (Some(Component::Normal(value)), None) if value == OsStr::new(trimmed) => Ok(trimmed),
         _ => Err("File name must be a single file name".to_string()),
+    }
+}
+
+fn rename_file_name_with_preserved_extension(path: &Path, name: &str) -> Result<String, String> {
+    let stem = validate_rename_file_name(name)?;
+    if path.extension().is_some() && Path::new(stem).extension().is_some() {
+        return Err("File name cannot change the extension".to_string());
+    }
+
+    Ok(match path.extension().and_then(OsStr::to_str) {
+        Some(extension) => format!("{stem}.{extension}"),
+        None => stem.to_string(),
+    })
+}
+
+fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
+    match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
     }
 }
 
@@ -1957,7 +1970,11 @@ fn infer_image_mime(bytes: &[u8], source: &str) -> &'static str {
         return "image/svg+xml";
     }
 
-    let lower = source.split(['?', '#']).next().unwrap_or(source).to_lowercase();
+    let lower = source
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(source)
+        .to_lowercase();
     if lower.ends_with(".svg") {
         "image/svg+xml"
     } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
@@ -2019,9 +2036,7 @@ fn save_draft_backups(
 }
 
 #[tauri::command]
-fn load_draft_backups(
-    state: State<'_, DesktopAppState>,
-) -> Result<Vec<DraftBackupEntry>, String> {
+fn load_draft_backups(state: State<'_, DesktopAppState>) -> Result<Vec<DraftBackupEntry>, String> {
     with_backend(state, |backend| backend.load_draft_backups())
 }
 
@@ -2160,10 +2175,8 @@ fn import_image_asset(
     state: State<'_, DesktopAppState>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let document_path = with_backend(state, |backend| {
-        Ok(backend.snapshot().active_document_path)
-    })?
-    .ok_or_else(|| "Save the document before importing images".to_string())?;
+    let document_path = with_backend(state, |backend| Ok(backend.snapshot().active_document_path))?
+        .ok_or_else(|| "Save the document before importing images".to_string())?;
     let asset_folder = load_desktop_settings(&app_handle)?.asset_folder;
     copy_image_into_asset_folder(
         Path::new(&document_path),
@@ -2186,7 +2199,11 @@ fn copy_image_into_asset_folder(
         .ok_or_else(|| "Could not resolve the document directory".to_string())?;
     let folder = {
         let trimmed = asset_folder.trim();
-        if trimmed.is_empty() { "assets" } else { trimmed }
+        if trimmed.is_empty() {
+            "assets"
+        } else {
+            trimmed
+        }
     };
     let asset_dir = document_dir.join(folder);
     let file_name = source_path
@@ -2518,8 +2535,14 @@ mod tests {
         let relative = copy_image_into_asset_folder(&document_path, "assets", &picked).unwrap();
 
         assert_eq!(relative, "assets/shot-1.png");
-        assert_eq!(fs::read(temp.path().join("assets/shot.png")).unwrap(), b"old");
-        assert_eq!(fs::read(temp.path().join("assets/shot-1.png")).unwrap(), b"new");
+        assert_eq!(
+            fs::read(temp.path().join("assets/shot.png")).unwrap(),
+            b"old"
+        );
+        assert_eq!(
+            fs::read(temp.path().join("assets/shot-1.png")).unwrap(),
+            b"new"
+        );
     }
 
     #[test]
@@ -2769,11 +2792,16 @@ mod tests {
 
     #[test]
     fn cli_wait_invocation_is_detected_regardless_of_arg_order() {
-        let parse = |args: &[&str]| {
-            super::parse_cli_wait_invocation(args.iter().map(|s| s.to_string()))
-        };
-        assert_eq!(parse(&["--wait", "/tmp/p.md"]), Some("/tmp/p.md".to_string()));
-        assert_eq!(parse(&["/tmp/p.md", "--wait"]), Some("/tmp/p.md".to_string()));
+        let parse =
+            |args: &[&str]| super::parse_cli_wait_invocation(args.iter().map(|s| s.to_string()));
+        assert_eq!(
+            parse(&["--wait", "/tmp/p.md"]),
+            Some("/tmp/p.md".to_string())
+        );
+        assert_eq!(
+            parse(&["/tmp/p.md", "--wait"]),
+            Some("/tmp/p.md".to_string())
+        );
         assert_eq!(parse(&["-w", "p.md"]), Some("p.md".to_string()));
         // No --wait → normal launch path.
         assert_eq!(parse(&["/tmp/p.md"]), None);
@@ -2951,7 +2979,7 @@ mod tests {
         backend.open_workspace(&workspace_path).unwrap();
         backend.open_workspace_document(&original_path).unwrap();
         let snapshot = backend
-            .rename_workspace_document(&original_path, "renamed.md")
+            .rename_workspace_document(&original_path, "renamed")
             .unwrap();
 
         assert!(!original_path.exists());
@@ -2971,10 +2999,9 @@ mod tests {
     }
 
     #[test]
-    fn backend_rename_workspace_document_retargets_recent_document_without_workspace() {
+    fn backend_rename_workspace_document_rejects_recent_document_without_workspace() {
         let temp = tempdir().unwrap();
         let original_path = temp.path().join("draft.md");
-        let renamed_path = temp.path().join("renamed.md");
         fs::write(&original_path, "# Draft").unwrap();
 
         let mut backend = DesktopBackend::new(None);
@@ -2982,15 +3009,30 @@ mod tests {
             .runtime
             .workspace_mut()
             .restore_recent_documents(vec![original_path.clone()]);
+        let result = backend.rename_workspace_document(&original_path, "renamed");
+
+        assert!(result.is_err());
+        assert!(original_path.exists());
+    }
+
+    #[test]
+    fn backend_rename_workspace_document_preserves_extension_and_allows_case_only_rename() {
+        let temp = tempdir().unwrap();
+        let workspace_path = temp.path().join("workspace");
+        fs::create_dir_all(&workspace_path).unwrap();
+        let original_path = workspace_path.join("draft.md");
+        let renamed_path = workspace_path.join("Draft.md");
+        fs::write(&original_path, "# Draft").unwrap();
+
+        let mut backend = DesktopBackend::new(None);
+        backend.open_workspace(&workspace_path).unwrap();
         let snapshot = backend
-            .rename_workspace_document(&original_path, "renamed.md")
+            .rename_workspace_document(&original_path, "Draft")
             .unwrap();
 
-        assert!(!original_path.exists());
         assert_eq!(fs::read_to_string(&renamed_path).unwrap(), "# Draft");
-        assert!(snapshot.workspace_documents.is_empty());
         assert_eq!(
-            snapshot.recent_documents,
+            snapshot.workspace_documents,
             vec![renamed_path.to_string_lossy().into_owned()]
         );
     }
@@ -3020,7 +3062,12 @@ mod tests {
         );
         assert!(
             backend
-                .rename_workspace_document(&original_path, "existing.md")
+                .rename_workspace_document(&original_path, "existing")
+                .is_err()
+        );
+        assert!(
+            backend
+                .rename_workspace_document(&original_path, "changed.txt")
                 .is_err()
         );
         assert!(original_path.exists());
@@ -3471,10 +3518,16 @@ mod tests {
 
     #[test]
     fn infer_image_mime_detects_formats_from_magic_bytes_and_extension() {
-        assert_eq!(infer_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0], "x.bin"), "image/jpeg");
+        assert_eq!(
+            infer_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0], "x.bin"),
+            "image/jpeg"
+        );
         assert_eq!(infer_image_mime(b"GIF89a", "x.bin"), "image/gif");
         assert_eq!(infer_image_mime(b"<svg xmlns=...>", "x"), "image/svg+xml");
         // Falls back to the extension when the bytes are not a known signature.
-        assert_eq!(infer_image_mime(b"not-an-image", "logo.webp?v=2"), "image/webp");
+        assert_eq!(
+            infer_image_mime(b"not-an-image", "logo.webp?v=2"),
+            "image/webp"
+        );
     }
 }
