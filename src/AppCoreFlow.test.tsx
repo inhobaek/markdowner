@@ -19,6 +19,7 @@ const newDocumentMock = vi.fn();
 const openDocumentMock = vi.fn();
 const openWorkspaceMock = vi.fn();
 const openWorkspaceDocumentMock = vi.fn();
+const renameWorkspaceDocumentMock = vi.fn();
 const replaceActiveDocumentSourceMock = vi.fn();
 const saveActiveDocumentMock = vi.fn();
 const saveActiveDocumentAsMock = vi.fn();
@@ -52,6 +53,7 @@ vi.mock('./lib/desktop', () => ({
   openDocument: openDocumentMock,
   openWorkspace: openWorkspaceMock,
   openWorkspaceDocument: openWorkspaceDocumentMock,
+  renameWorkspaceDocument: renameWorkspaceDocumentMock,
   replaceActiveDocumentSource: replaceActiveDocumentSourceMock,
   saveActiveDocument: saveActiveDocumentMock,
   saveActiveDocumentAs: saveActiveDocumentAsMock,
@@ -197,6 +199,7 @@ describe('App core Markdown editing flow', () => {
     openDocumentMock.mockReset();
     openWorkspaceMock.mockReset();
     openWorkspaceDocumentMock.mockReset();
+    renameWorkspaceDocumentMock.mockReset();
     replaceActiveDocumentSourceMock.mockReset();
     saveActiveDocumentMock.mockReset();
     saveActiveDocumentAsMock.mockReset();

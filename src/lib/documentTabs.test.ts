@@ -20,6 +20,7 @@ import {
   refreshSwitchedDocumentTab,
   refreshSwitchedDocumentTabFromSnapshot,
   rememberClosedDocumentTab,
+  retargetDocumentTabPath,
   resolveCloseTabTransition,
   resolveDocumentTabViewState,
   resolveSettingsTabToggle,
@@ -148,6 +149,71 @@ describe('createDocumentTabFromSnapshot', () => {
         source: '',
       }),
     );
+  });
+});
+
+describe('retargetDocumentTabPath', () => {
+  it('updates the tab matching the old file path', () => {
+    const tabs = [
+      documentTab({ id: 'old', path: '/tmp/project/draft.md', name: 'draft.md' }),
+      documentTab({ id: 'other', path: '/tmp/project/other.md', name: 'other.md' }),
+      createSettingsTab(),
+    ];
+
+    expect(
+      retargetDocumentTabPath({
+        tabs,
+        oldPath: '/tmp/project/draft.md',
+        newPath: '/tmp/project/renamed.md',
+        newName: 'renamed.md',
+      }),
+    ).toEqual([
+      documentTab({
+        id: 'old',
+        path: '/tmp/project/renamed.md',
+        name: 'renamed.md',
+        missing: false,
+      }),
+      tabs[1],
+      tabs[2],
+    ]);
+  });
+
+  it('drops an existing missing tab at the renamed path', () => {
+    const tabs = [
+      documentTab({
+        id: 'old',
+        path: '/tmp/project/draft.md',
+        name: 'draft.md',
+        source: '# Draft',
+        draft: '# Draft edited',
+      }),
+      documentTab({
+        id: 'missing',
+        path: '/tmp/project/renamed.md',
+        name: 'renamed.md',
+        source: '',
+        draft: '',
+        missing: true,
+      }),
+    ];
+
+    expect(
+      retargetDocumentTabPath({
+        tabs,
+        oldPath: '/tmp/project/draft.md',
+        newPath: '/tmp/project/renamed.md',
+        newName: 'renamed.md',
+      }),
+    ).toEqual([
+      documentTab({
+        id: 'old',
+        path: '/tmp/project/renamed.md',
+        name: 'renamed.md',
+        source: '# Draft',
+        draft: '# Draft edited',
+      }),
+    ]);
   });
 });
 

@@ -36,6 +36,7 @@ export interface SideBarProps {
   onSelectOpenEditor: (id: string) => void;
   onCloseOpenEditor: (id: string) => void;
   onOpenRecentDocument: (path: string) => void;
+  onRenameFile: (path: string, newName: string) => Promise<void> | void;
   renderWorkspaceTreeNodes: () => ReactNode;
   displayFileName: (path: string) => string;
   displayWorkspacePath: (path: string, rootDir: string | null) => string;
@@ -76,6 +77,7 @@ export function SideBar({
   onSelectOpenEditor,
   onCloseOpenEditor,
   onOpenRecentDocument,
+  onRenameFile,
   renderWorkspaceTreeNodes,
   displayFileName,
   displayWorkspacePath,
@@ -156,6 +158,7 @@ export function SideBar({
           onSelectOpenEditor={onSelectOpenEditor}
           onCloseOpenEditor={onCloseOpenEditor}
           onOpenRecentDocument={onOpenRecentDocument}
+          onRenameFile={onRenameFile}
           renderWorkspaceTreeNodes={renderWorkspaceTreeNodes}
           displayFileName={displayFileName}
           displayWorkspacePath={displayWorkspacePath}

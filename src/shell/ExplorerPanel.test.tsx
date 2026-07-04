@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ExplorerPanel, type OpenEditorItem } from './ExplorerPanel';
@@ -43,12 +43,21 @@ function createExplorerPanelProps(
     onSelectOpenEditor: vi.fn(),
     onCloseOpenEditor: vi.fn(),
     onOpenRecentDocument: vi.fn(),
+    onRenameFile: vi.fn(),
     renderWorkspaceTreeNodes: () => (
       <>
-        <button type="button" data-explorer-row="" onClick={() => props.onOpenRecentDocument('alpha')}>
+        <button
+          type="button"
+          data-explorer-row=""
+          onClick={() => props.onOpenRecentDocument('alpha')}
+        >
           alpha.md
         </button>
-        <button type="button" data-explorer-row="" onClick={() => props.onOpenRecentDocument('beta')}>
+        <button
+          type="button"
+          data-explorer-row=""
+          onClick={() => props.onOpenRecentDocument('beta')}
+        >
           beta.md
         </button>
       </>
@@ -109,6 +118,47 @@ describe('ExplorerPanel', () => {
     expect(props.onSelectOpenEditor).toHaveBeenCalledWith('tab-1');
     expect(props.onCloseOpenEditor).toHaveBeenCalledWith('tab-2');
     expect(props.onOpenRecentDocument).toHaveBeenCalledWith('/tmp/project/docs/old.md');
+  });
+
+  it('renames an open editor from the right-click context menu', async () => {
+    const props = renderExplorerPanel();
+    const openEditor = screen.getAllByRole('button', { name: /switch to open editor/i })[0];
+
+    fireEvent.contextMenu(openEditor);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Rename draft.md' });
+    expect(input).toHaveValue('draft');
+
+    fireEvent.change(input, { target: { value: 'renamed' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(props.onRenameFile).toHaveBeenCalledWith('/tmp/project/docs/draft.md', 'renamed');
+    });
+  });
+
+  it('does not rename recent documents', () => {
+    const props = renderExplorerPanel();
+    const recent = screen.getByRole('button', { name: 'old.md' });
+
+    fireEvent.mouseDown(recent, { button: 2 });
+
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument();
+    expect(props.onRenameFile).not.toHaveBeenCalled();
+  });
+
+  it('clears browser text selection when opening a file context menu', () => {
+    const removeAllRanges = vi.fn();
+    const getSelection = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ removeAllRanges } as unknown as Selection);
+
+    renderExplorerPanel();
+
+    fireEvent.contextMenu(screen.getAllByRole('button', { name: /switch to open editor/i })[0]);
+
+    expect(removeAllRanges).toHaveBeenCalled();
+    getSelection.mockRestore();
   });
 
   it('collapses sections and persists the collapsed state', () => {

@@ -56,6 +56,10 @@ export async function openWorkspaceDocument(path: string) {
   return invoke<AppSnapshot>('open_workspace_document', { path });
 }
 
+export async function renameWorkspaceDocument(path: string, newName: string) {
+  return invoke<AppSnapshot>('rename_workspace_document', { path, newName });
+}
+
 export async function replaceActiveDocumentSource(source: string) {
   return invoke<AppSnapshot>('replace_active_document_source', { source });
 }
